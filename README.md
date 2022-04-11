@@ -4,7 +4,7 @@ A BLE-enabled PING-PONG LoRa P2P sketch for RUI3 / RAK4631 and RAK3172 with lots
 
 ![BLE](BLE.png)
 
-It accepts so far eleven commands, via Serial and/or BLE:
+It accepts so far thirteen commands, via Serial and/or BLE:
 
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
 * `/whomai`: get the BLE broadcast name. Useful when you have a few devices. You enter this command on Serial, and get the right name.
@@ -18,6 +18,8 @@ It accepts so far eleven commands, via Serial and/or BLE:
 ⁉️ HPa data seems off by quite a bit, at least on my rak1906...
 * `/msl xyzt`: sets the MSL to a new value. Useful for the next command.
 * `/alt`: calculates the altitude from the current pressure and MSL. If both 1902 and 1906 are present, it will do it twice.
+* `/set yyyy-mm-dd hh:mn:ss` sets the date and time if you have a DS3231M RTC.
+* `/rtc` displays the date and time if you have a DS3231M RTC.
 
 Yes, the sketch recognizes the sensors on its own.
 
@@ -38,6 +40,10 @@ add
 ```
 
 Where `YOURID` is your login ID on Mac. This requires a little adjustment for Windows and Linux – basically point at the right location under `Arduino15`. This uses the macro definitions from the [RAK Arduino BSP](https://github.com/RAKWireless/RAK-nRF52-Arduino) (which means you need that too...). And this fixes the issues.
+
+### DS3231M
+
+Same procedure for the RTC: in [`DS3231M.h`](https://github.com/Zanduino/DS3231M) below `#include "Arduino.h"` add the same patch as for `ss_oled.h`
 
 ![smooth](oledpingpong.gif)
 

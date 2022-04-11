@@ -4,7 +4,11 @@
 #include "ClosedCube_BME680.h"
 #include <ss_oled.h>
 #include "HTU21D.h"
+#include <CayenneLPP.h>
+#include <DS3231M.h> // Include the DS3231M RTC library
 
+DS3231M_Class DS3231M; // /< Create an instance of the DS3231M class
+CayenneLPP lpp(51);
 //Create an instance of the HTU21D object
 HTU21D myHTU21D;
 /** Temperature & Humidity sensor **/
@@ -27,7 +31,7 @@ int rc;
 SSOLED oled;
 
 static uint8_t ucBuffer[1024];
-bool hasOLED = true, hasTH = false, hasPA = false, hasLux = false, hasBME680 = false, hasHTU21D = false;
+bool hasOLED = true, hasTH = false, hasPA = false, hasLux = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false;
 float temp, humid, HPa, Lux;
 long startTime;
 // LoRa SETUP
@@ -119,6 +123,64 @@ void send_cb(void) {
   // NB: 65535 = wait for ONE packet, no timeout
 }
 
+void sendLPP() {
+  lpp.reset();
+  uint8_t channel = 1;
+  if (hasTH) {
+    if (hasOLED) displayScroll(" * rak1901");
+    th_sensor.update();
+    temp = th_sensor.temperature();
+    humid = th_sensor.humidity();
+    lpp.addTemperature(channel++, temp);
+    lpp.addRelativeHumidity(channel++, humid);
+  }
+  if (hasPA) {
+    if (hasOLED) displayScroll(" * rak1902");
+    HPa = p_sensor.pressure(MILLIBAR);
+    lpp.addBarometricPressure(channel++, HPa);
+  }
+  if (hasBME680) {
+    if (hasOLED) displayScroll(" * rak1906");
+    ClosedCube_BME680_Status status = bme680.readStatus();
+    //  if (status.newDataFlag) {
+    temp = bme680.readTemperature();
+    HPa = bme680.readPressure();
+    humid = bme680.readHumidity();
+    lpp.addTemperature(channel++, temp);
+    lpp.addRelativeHumidity(channel++, humid);
+    lpp.addBarometricPressure(channel++, HPa);
+  }
+  if (hasHTU21D) {
+    if (hasOLED) displayScroll(" * HTU21D");
+    myHTU21D.measure();
+    temp = myHTU21D.getTemperature();
+    humid = myHTU21D.getHumidity();
+    lpp.addTemperature(channel++, temp);
+    lpp.addRelativeHumidity(channel++, humid);
+  }
+  if (hasLux) {
+    if (hasOLED) displayScroll(" * rak1903");
+    lux_sensor.update();
+    lpp.addLuminosity(channel++, lux_sensor.lux());
+  }
+  uint8_t ln = lpp.getSize();
+  api.lorawan.precv(0);
+  // turn off reception – a little hackish, but without that send might fail.
+  char msg[48];
+  bool rslt = api.lorawan.psend(ln, lpp.getBuffer());
+  sprintf(msg, "Sending LPP payload: %s\n", msg, rslt ? "Success" : "Fail");
+  Serial.print(msg);
+  hexDump(lpp.getBuffer(), ln);
+#ifdef __RAKBLE_H__
+  Serial.println(F("Sending to BLE..."));
+  api.ble.uart.write((uint8_t*)msg, strlen(msg));
+#endif
+  if (hasOLED) {
+    sprintf(msg, "LPP %d b: %s", ln, rslt ? "[o]" : "[x]");
+    displayScroll(msg);
+  }
+}
+
 void sendPing() {
   char payload[48];
   sprintf(payload, "PING #0x%04x", counter++);
@@ -193,10 +255,9 @@ void sendMsg(char* msg) {
   memset(buff, 0, ln + 20);
   sprintf(buff, "Sending `%s`: %s\n\r", msg, api.lorawan.psend(ln, (uint8_t*)msg) ? "Success" : "Fail");
   Serial.print(buff);
-  Serial.println("Sending to BLE...");
 #ifdef __RAKBLE_H__
-  ln = strlen(msg);
-  api.ble.uart.write((uint8_t*)msg, ln);
+  Serial.println(F("Sending to BLE..."));
+  api.ble.uart.write((uint8_t*)msg, strlen(msg));
 #endif
   if (hasOLED) displayScroll(msg);
 }
@@ -210,9 +271,56 @@ float calcAlt(float pressure) {
   return C;
 }
 
+void displayTime() {
+  DateTime now = DS3231M.now(); // get the current time from device
+  // Output if seconds have changed
+  // Use sprintf() to pretty print the date/time with leading zeros
+  char buff[48]; // /< Temporary buffer for sprintf()
+  sprintf(buff, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+  Serial.println(buff);
+#ifdef __RAKBLE_H__
+  Serial.println(F("Sending to BLE..."));
+  api.ble.uart.write((uint8_t*)buff, strlen(buff));
+#endif
+  if (hasOLED) {
+    sprintf(buff, "%04d/%02d/%02d", now.year(), now.month(), now.day());
+    displayScroll(buff);
+    sprintf(buff, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+    displayScroll(buff);
+  }
+}
+
 void handleCommands(char *cmd) {
   if (cmd[0] != '/') return;
   // If the string doesn't start with / – it's not a command
+
+  if (hasDS3231M) {
+    if (cmd[1] == 's' &cmd[2] == 'e' &cmd[3] == 't' &cmd[4] == ' ') {
+      char workBuffer[128]; // Buffer to hold string compare
+      unsigned int tokens, year, month, day, hour, minute, second;
+      // Variables to hold parsed date/time
+      // Use sscanf() to parse the date/time into component variables
+      tokens = sscanf(cmd, "%*s %u-%u-%u %u:%u:%u;", &year, &month, &day, &hour, &minute, &second);
+      if (tokens != 6) {
+        // Check to see if it was parsed correctly
+        Serial.print(F("Unable to parse date/time\n"));
+      } else {
+        DS3231M.adjust(DateTime(year, month, day, hour, minute, second));
+        // Adjust the RTC date/time
+        Serial.print(F("Date / Time set."));
+#ifdef __RAKBLE_H__
+        Serial.println(F("Sending to BLE..."));
+        api.ble.uart.write((uint8_t*)"Date / Time set.", 16);
+#endif
+      }
+      displayTime();
+      return;
+    }
+    if (strcmp(cmd, "/rtc") == 0) {
+      displayTime();
+    }
+  }
+
   if (strcmp(cmd, "/ping") == 0) {
     sendPing();
     return;
@@ -276,6 +384,11 @@ void handleCommands(char *cmd) {
 
   if (strcmp(cmd, "/i2c") == 0) {
     i2cScan();
+    return;
+  }
+
+  if (strcmp(cmd, "/lpp") == 0) {
+    sendLPP();
     return;
   }
 
@@ -417,7 +530,7 @@ void setup() {
   Serial.println("RAKwireless LoRa P2P BLE Example");
   Serial.println("------------------------------------------------------");
   Wire.begin();
-  //Wire.setClock(400000);
+  Wire.setClock(1e6);
   // Test for OLED
   Wire.beginTransmission(0x3c);
   delay(100);
@@ -427,7 +540,7 @@ void setup() {
     if (hasOLED) {
       // the user wants OLED display
       uint8_t uc[8];
-      rc = oledInit(&oled, OLED_128x64, 0x3c, FLIPPED, INVERTED, HARDWARE_I2C, SDA_PIN, SCL_PIN, RESET_PIN, 400000L);
+      rc = oledInit(&oled, OLED_128x64, 0x3c, FLIPPED, INVERTED, HARDWARE_I2C, SDA_PIN, SCL_PIN, RESET_PIN, 1000000L);
       if (rc != OLED_NOT_FOUND) {
         oledSetBackBuffer(&oled, ucBuffer);
         oledSetTextWrap(&oled, 1);
@@ -440,6 +553,17 @@ void setup() {
     }
   } else hasOLED = false;
   // Even if the user wanted it – since it ain't there, we set it to false.
+
+  // Test for rtc
+  Wire.beginTransmission(0x68);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    Serial.println("DS3231M RTC present!");
+    hasDS3231M = DS3231M.begin();
+    Serial.printf("DS3231M init %s\n", hasDS3231M ? "success" : "fail");
+    if (hasDS3231M && hasOLED) displayScroll("* DS3231M RTCC");
+  }
+
   // Test for rak1901
   Wire.beginTransmission(0x70);
   error = Wire.endTransmission();
