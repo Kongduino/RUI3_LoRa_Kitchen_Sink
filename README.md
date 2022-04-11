@@ -4,7 +4,7 @@ A BLE-enabled PING-PONG LoRa P2P sketch for RUI3 / RAK4631 and RAK3172 with lots
 
 ![BLE](BLE.png)
 
-It accepts so far ten commands, via Serial and/or BLE:
+It accepts so far eleven commands, via Serial and/or BLE:
 
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
 * `/whomai`: get the BLE broadcast name. Useful when you have a few devices. You enter this command on Serial, and get the right name.
@@ -12,6 +12,7 @@ It accepts so far ten commands, via Serial and/or BLE:
 * `/> xxxxx`: send a custom message. Notice the space between `/>` and `xxxxxx`.
 * `/th`: send the temperature and humidity if you have a [RAK1901](https://store.rakwireless.com/products/rak1901-shtc3-temperature-humidity-sensor) connected.
 * `/pa`: send the air pressure if you have a [RAK1902](https://store.rakwireless.com/products/rak1902-kps22hb-barometric-pressure-sensor) connected.
+* `/htu`: send the temperature and humidity if you have an [HTU21D](https://www.mikroe.com/htu21d-click), or similar, connected.
 * `/lux`: send the Ambient Light level if you have a [RAK1903](https://store.rakwireless.com/products/rak1903-opt3001dnpr-ambient-light-sensor) connected.
 * `/bme`: send the temperature, humidity and air pressure if you have a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor) connected.
 ⁉️ HPa data seems off by quite a bit, at least on my rak1906...

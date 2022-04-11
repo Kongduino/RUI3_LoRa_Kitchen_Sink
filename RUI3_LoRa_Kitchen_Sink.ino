@@ -3,7 +3,10 @@
 #include "rak1903.h"
 #include "ClosedCube_BME680.h"
 #include <ss_oled.h>
+#include "HTU21D.h"
 
+//Create an instance of the HTU21D object
+HTU21D myHTU21D;
 /** Temperature & Humidity sensor **/
 rak1901 th_sensor;
 /** Air Pressure sensor **/
@@ -24,7 +27,7 @@ int rc;
 SSOLED oled;
 
 static uint8_t ucBuffer[1024];
-bool hasOLED = true, hasTH = false, hasPA = false, hasLux = false, hasBME680 = false;
+bool hasOLED = true, hasTH = false, hasPA = false, hasLux = false, hasBME680 = false, hasHTU21D = false;
 float temp, humid, HPa, Lux;
 long startTime;
 // LoRa SETUP
@@ -123,14 +126,25 @@ void sendPing() {
 }
 
 void sendTH() {
-  // TH values are updated automatically every 30 seconds
+  th_sensor.update();
+  temp = th_sensor.temperature();
+  humid = th_sensor.humidity();
   char payload[48] = {0};
   sprintf(payload, "%.2f C %.2f%%", temp, humid);
   sendMsg(payload);
 }
 
+void sendHTU21D() {
+  char payload[48] = {0};
+  myHTU21D.measure();
+  temp = myHTU21D.getTemperature();
+  humid = myHTU21D.getHumidity();
+  sprintf(payload, "%.2f C %.2f%%", temp, humid);
+  sendMsg(payload);
+}
+
 void sendPA() {
-  // HPa value is updated automatically every 30 seconds
+  HPa = p_sensor.pressure(MILLIBAR);
   char payload[48] = {0};
   sprintf(payload, "%.2f HPa", HPa);
   sendMsg(payload);
@@ -149,18 +163,18 @@ void sendLux() {
 void sendBME680() {
   ClosedCube_BME680_Status status = bme680.readStatus();
   //  if (status.newDataFlag) {
-  double tp = bme680.readTemperature();
-  double pa = bme680.readPressure();
-  double hm = bme680.readHumidity();
+  temp = bme680.readTemperature();
+  HPa = bme680.readPressure();
+  humid = bme680.readHumidity();
   char payload[48] = {0};
-  sprintf(payload, "%.2f C %.2f%% %.2f HPa", tp, hm, pa);
+  sprintf(payload, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
   if (hasOLED) {
     hasOLED = false;
     // we will display on 2 lines, separately
     sendMsg(payload);
-    sprintf(payload, "%.2fC %.2f%%", tp, hm);
+    sprintf(payload, "%.2fC %.2f%%", temp, humid);
     displayScroll(payload);
-    sprintf(payload, "%.2f HPa", pa);
+    sprintf(payload, "%.2f HPa", HPa);
     displayScroll(payload);
     hasOLED = true;
   } else {
@@ -271,6 +285,12 @@ void handleCommands(char *cmd) {
     return;
   }
 
+  if (strcmp(cmd, "/htu") == 0) {
+    if (hasHTU21D) sendHTU21D();
+    else Serial.println("No HTU21D module installed!");
+    return;
+  }
+
   if (strcmp(cmd, "/pa") == 0) {
     if (hasPA) sendPA();
     else Serial.println("No RAK1902 module installed!");
@@ -313,14 +333,17 @@ void i2cScan() {
   Serial.print("-------------------------------------------------------------------------------------\n0. |   .  ");
   char memo[64];
   char buff[32];
-  if (hasOLED) {
+  /*
+    if (hasOLED) {
     oledFill(&oled, 0, 1);
     oledSetContrast(&oled, 127);
     oledWriteString(&oled, 0, -1, -1, (char *)"LoRa p2p", FONT_16x16, 0, 1);
     oledWriteString(&oled, 0, 0, 2, (char *)"Scanning", FONT_8x8, 0, 1);
-  }
-  posY = 3;
+    }
+    posY = 3;
+  */
   int posX = 0;
+  displayScroll("Scanning");
   for (addr = 1; addr < 128; addr++) {
     Wire.beginTransmission(addr);
     error = Wire.endTransmission();
@@ -361,12 +384,15 @@ void i2cScan() {
   Serial.println("\n-------------------------------------------------------------------------------------");
   Serial.println("I2C devices found: " + String(nDevices));
   sprintf(buff, "%d devices", nDevices);
-  for (uint8_t i = 0; i < 8; i++) {
+  /*
+    for (uint8_t i = 0; i < 8; i++) {
     oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
     oledDumpBuffer(&oled, NULL);
-  }
-  oledWriteString(&oled, 0, 0, 7, buff, FONT_8x8, 0, 1);
-  posY = 7;
+    }
+    oledWriteString(&oled, 0, 0, 7, buff, FONT_8x8, 0, 1);
+    posY = 7;
+  */
+  displayScroll(buff);
 }
 
 void setup() {
@@ -469,6 +495,16 @@ void setup() {
     } else Serial.println("RAK1906 init fail!");
   }
 
+  // Test for HTU21D
+  Wire.beginTransmission(0x40);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    Serial.println("HTU21D Temperature/Humidity present!");
+    if (hasOLED) displayScroll("* HTU21D");
+    myHTU21D.begin();
+    hasHTU21D = true;
+  }
+
   Serial.println("P2P Start");
   if (hasOLED) displayScroll("* P2P Start");
   char HardwareID[16]; // nrf52840
@@ -526,18 +562,6 @@ void setup() {
 }
 
 void loop() {
-  if (millis() - startTime > 30000) {
-    if (hasTH) {
-      // Get sensor RAK1901 values
-      th_sensor.update();
-      temp = th_sensor.temperature();
-      humid = th_sensor.humidity();
-    }
-    if (hasPA) {
-      HPa = p_sensor.pressure(MILLIBAR);
-    }
-    startTime = millis();
-  }
 #ifdef __RAKBLE_H__
   if (api.ble.uart.available()) {
     // store the incoming string into a buffer
@@ -551,7 +575,7 @@ void loop() {
       char c = api.ble.uart.read();
       if (c > 31) str1[ix++] = c;
       // strip \r\n and the like
-      // this is ok because we expect text. You might want to adjust if you are sending binary data
+      // this is ok because we expect text. You might want to adjust if you are accepting binary data
     }
     str1[ix] = 0;
     Serial.println(str1);
