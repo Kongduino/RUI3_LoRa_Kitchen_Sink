@@ -43,7 +43,7 @@ Where `YOURID` is your login ID on Mac. This requires a little adjustment for Wi
 
 ### DS3231M
 
-Same procedure for the RTC: in [`DS3231M.h`](https://github.com/Zanduino/DS3231M) below `#include "Arduino.h"` add the same patch as for `ss_oled.h`
+Same procedure for the RTC: in [`DS3231M.h`](https://github.com/Zanduino/DS3231M) below `#include "Arduino.h"` add the same patch as for `ss_oled.h`. In a coming release, the RTC will be used to timestamp packets.
 
 ![smooth](oledpingpong.gif)
 
