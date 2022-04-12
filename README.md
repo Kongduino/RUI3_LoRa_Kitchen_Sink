@@ -1,6 +1,12 @@
 # RUI3_LoRa_Kitchen_Sink
 
-A BLE-enabled PING-PONG LoRa P2P sketch for RUI3 / RAK4631 and RAK3172 with lots of options! based on [RUI3_LoRa_Kitchen_Sink](https://github.com/Kongduino/RUI3_LoRa_Kitchen_Sink).
+A BLE-enabled[*] PING-PONG LoRa P2P sketch for RUI3 / RAK4631 and RAK3172 with lots of options, based on [RUI3_LoRa_P2P_BLE_PING_PONG](https://github.com/Kongduino/RUI3_LoRa_P2P_BLE_PING_PONG).
+
+_[*] if available_
+
+### RAK4632 & RAK3172
+
+The code works uniformly on both platforms, as is. You only need to compile the firmware and upload it. This can be all done in Arduino IDE, but there's a caveat for RAK3172: it needs to be set in `BOOT_MODE`. This is done by connecting the `TX1` pin on the baseboard to the `VDD` pin and resetting the board. Once this is done you can sever the connection. On RAK4631 there's no need for this (although the upload process is a little slower, as the reset to boot mode is done in software).
 
 ![BLE](BLE.png)
 
@@ -51,4 +57,3 @@ Same procedure for the RTC: in [`DS3231M.h`](https://github.com/Zanduino/DS3231M
 ![BLE_Screenshot](BLE_Screenshot.jpg)
 ![Sensors_A](SensorsA.png)
 ![Sensors_B](SensorsB.png)
-

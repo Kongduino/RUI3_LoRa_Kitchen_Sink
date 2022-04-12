@@ -116,7 +116,17 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     displayScroll(msg);
     sprintf(msg, "SNR: %d", data.Snr);
     displayScroll(msg);
-    displayScroll((char*)data.Buffer);
+    if (data.BufferSize < 17) displayScroll((char*)data.Buffer);
+    else {
+      memset(msg, 0, 128);
+      memcpy(msg, (char*)data.Buffer, data.BufferSize);
+      for (uint8_t i = 0; i < data.BufferSize; i += 16) {
+        char c = msg[i + 16];
+        msg[i + 16] = 0;
+        displayScroll(msg + i);
+        msg[i + 16] = c;
+      }
+    }
   }
 #ifdef __RAKBLE_H__
   sendToBle(msg);
@@ -267,10 +277,11 @@ void sendMsg(char* msgToSend) {
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
   // memset(msg, 0, ln + 20);
-  sprintf(msg, "Sending `%s`: %s\n", msgToSend, api.lorawan.psend(ln, (uint8_t*)msgToSend) ? "Success" : "Fail");
-  Serial.print(msg);
+  char buff[128];
+  sprintf(buff, "Sending `%s`: %s\n", msgToSend, api.lorawan.psend(ln, (uint8_t*)msgToSend) ? "Success" : "Fail");
+  Serial.print(buff);
 #ifdef __RAKBLE_H__
-  sendToBle(msg);
+  sendToBle(buff);
 #endif
   if (hasOLED) {
     displayScroll("Sending P2P:");
@@ -383,7 +394,8 @@ void handleCommands(char *cmd) {
       float x = atof(cmd + 5);
       if (x > 900.0 && x < 1100.0) {
         MSL = x;
-        Serial.printf("MSL set to: %.2f HPa", MSL);
+        sprintf(msg, "MSL set to: %.2f HPa\n", MSL);
+        Serial.print(msg);
 #ifdef __RAKBLE_H__
         sendToBle(msg);
 #endif
