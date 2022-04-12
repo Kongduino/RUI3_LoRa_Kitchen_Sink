@@ -8,6 +8,14 @@ _[*] if available_
 
 The code works uniformly on both platforms, as is. You only need to compile the firmware and upload it. This can be all done in Arduino IDE, but there's a caveat for RAK3172: it needs to be set in `BOOT_MODE`. This is done by connecting the `TX1` pin on the baseboard to the `VDD` pin and resetting the board. Once this is done you can sever the connection. On RAK4631 there's no need for this (although the upload process is a little slower, as the reset to boot mode is done in software).
 
+### Saving firmwares for later reuse.
+
+```bash
+python3 ~/Library/Arduino15/packages/rak_rui/tools/uploader_ymodem/1.0.0/uploader_ymodem.py -f /var/folders/fg/nc6_868939q81qjxzv5g371w0000gn/T/arduino_build_668203/RUI3_LoRa_Kitchen_Sink.ino.bin -p /dev/cu.usbserial-XXXXXX 
+```
+
+The command to upload the firmware looks like this. The path to the Arduino temp folder and the USB port will differ, but at least on Mac OS X that's pretty close. You can `open` in the Terminal that temp folder (or `cd` to it) and save the `.zip` file for RAK4631, and `.bin` file for RAK3172. I tend to add then the MCU's name to the file. With that file saved somewhere safe, you can reflash the firmware without having to recompile it. Useful, among other things, if you want to flash several boards.
+
 ![BLE](BLE.png)
 
 It accepts so far thirteen commands, via Serial and/or BLE:
