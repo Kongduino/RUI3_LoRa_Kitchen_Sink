@@ -1,8 +1,22 @@
 #include "rak1901.h"
 #include "rak1902.h"
 #include "rak1903.h"
+// #include "unishox2.h"
 #include "ClosedCube_BME680.h"
 #include <ss_oled.h>
+/*
+  --> ss_oled.h
+  #include <BitBang_I2C.h>
+  #ifdef __RUI_TOP_H__
+  #include "/Users/XXXXXX/Library/Arduino15/packages/rakwireless/hardware/nrf52/1.0.1/cores/nRF5/avr/pgmspace.h"
+  #endif
+
+  --> BitBang_I2C.cpp
+  void I2CInit(BBI2C *pI2C, uint32_t iClock) {
+  [...]
+  #if defined(TEENSYDUINO) || defined(ARDUINO_ARCH_RP2040) || defined(__AVR__) || defined(NRF52)
+  || defined (ARDUINO_ARCH_NRF52840) || defined(ARDUINO_ARCH_NRF52) || defined(ARDUINO_ARCH_SAM) || defined(__RUI_TOP_H__)
+*/
 #include "HTU21D.h"
 #include <CayenneLPP.h>
 #include <DS3231M.h> // Include the DS3231M RTC library
@@ -40,6 +54,7 @@ long startTime;
 double myFreq = 868000000;
 float MSL = 1013.5;
 uint16_t counter = 0, sf = 12, bw = 125, cr = 0, preamble = 8, txPower = 22;
+char msg[128];
 
 void hexDump(uint8_t* buf, uint16_t len) {
   // Something similar to the Unix/Linux hexdump -C command
@@ -90,11 +105,10 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     // Serial.println("Empty buffer.");
     return;
   }
-  char msg[92];
   sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", data.BufferSize, data.Rssi, data.Snr);
   Serial.print(msg);
-  // Adafruit's Bluefruit connect is being difficult, and seems to require \r\n to fully receive a message..
-  sprintf(msg, "[%d] RSSI %d SNR %d\r\n", data.BufferSize, data.Rssi, data.Snr);
+  // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
+  sprintf(msg, "[%d] RSSI %d SNR %d\n", data.BufferSize, data.Rssi, data.Snr);
   if (hasOLED) {
     sprintf(msg, "LoRa msg: %d", data.BufferSize);
     displayScroll(msg);
@@ -105,23 +119,31 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     displayScroll((char*)data.Buffer);
   }
 #ifdef __RAKBLE_H__
-  api.ble.uart.write((uint8_t*)msg, strlen(msg));
+  sendToBle(msg);
 #endif
   hexDump(data.Buffer, data.BufferSize);
   Serial.println("Sending to BLE");
-  sprintf(msg, "%s\r\n", (char*)data.Buffer);
+  sprintf(msg, "%s\n", (char*)data.Buffer);
 #ifdef __RAKBLE_H__
-  api.ble.uart.write((uint8_t*)msg, strlen(msg));
+  sendToBle(msg);
 #endif
 }
 
 void send_cb(void) {
   // TX callback
-  Serial.printf("Set infinite Rx mode %s\r\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   // set the LoRa module to indefinite listening mode:
   // no timeout + no limit to the number of packets
   // NB: 65535 = wait for ONE packet, no timeout
 }
+
+#ifdef __RAKBLE_H__
+void sendToBle(char *msgToSend) {
+  Serial.println(F("Sending to BLE..."));
+  api.ble.uart.write((uint8_t*)msgToSend, strlen(msgToSend));
+}
+#endif
+
 
 void sendLPP() {
   lpp.reset();
@@ -166,14 +188,14 @@ void sendLPP() {
   uint8_t ln = lpp.getSize();
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
-  char msg[48];
-  bool rslt = api.lorawan.psend(ln, lpp.getBuffer());
-  sprintf(msg, "Sending LPP payload: %s\n", msg, rslt ? "Success" : "Fail");
+  uint8_t lBuff[48];
+  memcpy(lBuff, lpp.getBuffer(), ln);
+  bool rslt = api.lorawan.psend(ln, lBuff);
+  sprintf(msg, "Sending LPP payload: %s\n", rslt ? "Success" : "Fail");
   Serial.print(msg);
-  hexDump(lpp.getBuffer(), ln);
+  hexDump(lBuff, ln);
 #ifdef __RAKBLE_H__
-  Serial.println(F("Sending to BLE..."));
-  api.ble.uart.write((uint8_t*)msg, strlen(msg));
+  sendToBle(msg);
 #endif
   if (hasOLED) {
     sprintf(msg, "LPP %d b: %s", ln, rslt ? "[o]" : "[x]");
@@ -182,43 +204,38 @@ void sendLPP() {
 }
 
 void sendPing() {
-  char payload[48];
-  sprintf(payload, "PING #0x%04x", counter++);
-  sendMsg(payload);
+  sprintf(msg, "PING #0x%04x", counter++);
+  sendMsg(msg);
 }
 
 void sendTH() {
   th_sensor.update();
   temp = th_sensor.temperature();
   humid = th_sensor.humidity();
-  char payload[48] = {0};
-  sprintf(payload, "%.2f C %.2f%%", temp, humid);
-  sendMsg(payload);
+  sprintf(msg, "%.2f C %.2f%%", temp, humid);
+  sendMsg(msg);
 }
 
 void sendHTU21D() {
-  char payload[48] = {0};
   myHTU21D.measure();
   temp = myHTU21D.getTemperature();
   humid = myHTU21D.getHumidity();
-  sprintf(payload, "%.2f C %.2f%%", temp, humid);
-  sendMsg(payload);
+  sprintf(msg, "%.2f C %.2f%%", temp, humid);
+  sendMsg(msg);
 }
 
 void sendPA() {
   HPa = p_sensor.pressure(MILLIBAR);
-  char payload[48] = {0};
-  sprintf(payload, "%.2f HPa", HPa);
-  sendMsg(payload);
+  sprintf(msg, "%.2f HPa", HPa);
+  sendMsg(msg);
 }
 
 void sendLux() {
   // Update lux value then send.
   if (lux_sensor.update()) {
     Lux = lux_sensor.lux();
-    char payload[48] = {0};
-    sprintf(payload, "Lux: %.2f", Lux);
-    sendMsg(payload);
+    sprintf(msg, "Lux: %.2f", Lux);
+    sendMsg(msg);
   } else Serial.println("Couldn't update lux sensor!");
 }
 
@@ -228,38 +245,47 @@ void sendBME680() {
   temp = bme680.readTemperature();
   HPa = bme680.readPressure();
   humid = bme680.readHumidity();
-  char payload[48] = {0};
-  sprintf(payload, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
+  sprintf(msg, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
   if (hasOLED) {
     hasOLED = false;
     // we will display on 2 lines, separately
-    sendMsg(payload);
-    sprintf(payload, "%.2fC %.2f%%", temp, humid);
-    displayScroll(payload);
-    sprintf(payload, "%.2f HPa", HPa);
-    displayScroll(payload);
+    sendMsg(msg);
+    sprintf(msg, "%.2fC %.2f%%", temp, humid);
+    displayScroll(msg);
+    sprintf(msg, "%.2f HPa", HPa);
+    displayScroll(msg);
     hasOLED = true;
   } else {
-    sendMsg(payload);
+    sendMsg(msg);
   }
   bme680.setForcedMode();
   //  } else Serial.println("BME data not ready.");
 }
 
-
-void sendMsg(char* msg) {
-  uint8_t ln = strlen(msg);
+void sendMsg(char* msgToSend) {
+  uint8_t ln = strlen(msgToSend);
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
-  char buff[ln + 20];
-  memset(buff, 0, ln + 20);
-  sprintf(buff, "Sending `%s`: %s\n\r", msg, api.lorawan.psend(ln, (uint8_t*)msg) ? "Success" : "Fail");
-  Serial.print(buff);
+  // memset(msg, 0, ln + 20);
+  sprintf(msg, "Sending `%s`: %s\n", msgToSend, api.lorawan.psend(ln, (uint8_t*)msgToSend) ? "Success" : "Fail");
+  Serial.print(msg);
 #ifdef __RAKBLE_H__
-  Serial.println(F("Sending to BLE..."));
-  api.ble.uart.write((uint8_t*)msg, strlen(msg));
+  sendToBle(msg);
 #endif
-  if (hasOLED) displayScroll(msg);
+  if (hasOLED) {
+    displayScroll("Sending P2P:");
+    displayScroll(msgToSend);
+  }
+  /*
+    char test0[64], test1[64];
+    Serial.println("Unishox2 compression:");
+    int cLen = unishox2_compress(msg, ln, test0, USX_PSET_FAVOR_ALPHA);
+    Serial.printf("Compressed: %d vs %d\n", ln, cLen);
+    hexDump((uint8_t*)test0, cLen);
+    int dLen = unishox2_decompress(test0, cLen, test1, USX_PSET_FAVOR_ALPHA);
+    Serial.printf("Decompressed: %d vs %d\n", cLen, dLen);
+    hexDump((uint8_t*)test1, dLen);
+  */
 }
 
 float calcAlt(float pressure) {
@@ -275,18 +301,16 @@ void displayTime() {
   DateTime now = DS3231M.now(); // get the current time from device
   // Output if seconds have changed
   // Use sprintf() to pretty print the date/time with leading zeros
-  char buff[48]; // /< Temporary buffer for sprintf()
-  sprintf(buff, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-  Serial.println(buff);
+  sprintf(msg, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+  Serial.println(msg);
 #ifdef __RAKBLE_H__
-  Serial.println(F("Sending to BLE..."));
-  api.ble.uart.write((uint8_t*)buff, strlen(buff));
+  sendToBle(msg);
 #endif
   if (hasOLED) {
-    sprintf(buff, "%04d/%02d/%02d", now.year(), now.month(), now.day());
-    displayScroll(buff);
-    sprintf(buff, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
-    displayScroll(buff);
+    sprintf(msg, "%04d/%02d/%02d", now.year(), now.month(), now.day());
+    displayScroll(msg);
+    sprintf(msg, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+    displayScroll(msg);
   }
 }
 
@@ -296,7 +320,6 @@ void handleCommands(char *cmd) {
 
   if (hasDS3231M) {
     if (cmd[1] == 's' &cmd[2] == 'e' &cmd[3] == 't' &cmd[4] == ' ') {
-      char workBuffer[128]; // Buffer to hold string compare
       unsigned int tokens, year, month, day, hour, minute, second;
       // Variables to hold parsed date/time
       // Use sscanf() to parse the date/time into component variables
@@ -309,8 +332,7 @@ void handleCommands(char *cmd) {
         // Adjust the RTC date/time
         Serial.print(F("Date / Time set."));
 #ifdef __RAKBLE_H__
-        Serial.println(F("Sending to BLE..."));
-        api.ble.uart.write((uint8_t*)"Date / Time set.", 16);
+        sendToBle("Date / Time set.");
 #endif
       }
       displayTime();
@@ -333,19 +355,24 @@ void handleCommands(char *cmd) {
 
   if (strcmp(cmd, "/alt") == 0) {
     float pressure = 0.0;
-    char buff[32];
     if (hasPA) {
       float alt = calcAlt(HPa);
-      sprintf(buff, "1902: %.2f m", alt);
-      Serial.println(buff);
-      if (hasOLED) displayScroll(buff);
+      sprintf(msg, "1902: %.2f m", alt);
+      Serial.println(msg);
+      if (hasOLED) displayScroll(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
     }
     if (hasBME680) {
       ClosedCube_BME680_Status status = bme680.readStatus();
       float alt = calcAlt(bme680.readPressure());
-      sprintf(buff, "bme: %.2f m", alt);
-      Serial.println(buff);
-      if (hasOLED) displayScroll(buff);
+      sprintf(msg, "bme: %.2f m", alt);
+      Serial.println(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) displayScroll(msg);
     }
     return;
   }
@@ -357,8 +384,10 @@ void handleCommands(char *cmd) {
       if (x > 900.0 && x < 1100.0) {
         MSL = x;
         Serial.printf("MSL set to: %.2f HPa", MSL);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
         if (hasOLED) {
-          char msg[32];
           sprintf(msg, "New MSL: %.2f HPa", MSL);
           displayScroll(msg);
         }
@@ -371,13 +400,10 @@ void handleCommands(char *cmd) {
 
 #ifdef __RAKBLE_H__
   if (strcmp(cmd, "/whoami") == 0) {
-    char msg[64];
-    sprintf(msg, "Broadcast name: %s\n\r", api.ble.settings.broadcastName.get());
+    sprintf(msg, "Broadcast name: %s\n", api.ble.settings.broadcastName.get());
     Serial.println(msg);
-    Serial.println("Sending to BLE");
-    uint16_t ln = strlen(msg);
-    api.ble.uart.write((uint8_t*)msg, ln);
-    if (hasOLED) displayScroll(api.ble.settings.broadcastName.get());
+    if (hasOLED) displayScroll(msg);
+    sendToBle(api.ble.settings.broadcastName.get());
     return;
   }
 #endif
@@ -424,7 +450,7 @@ void handleCommands(char *cmd) {
 }
 
 int posY = 1;
-void displayScroll(char *msg) {
+void displayScroll(char *msgToSend) {
   posY += 1;
   if (posY == 8) {
     posY = 7;
@@ -433,12 +459,11 @@ void displayScroll(char *msg) {
       oledDumpBuffer(&oled, NULL);
     }
   }
-  oledWriteString(&oled, 0, 0, posY, msg, FONT_8x8, 0, 1);
+  oledWriteString(&oled, 0, 0, posY, msgToSend, FONT_8x8, 0, 1);
 }
 
 void i2cScan() {
   byte error, addr;
-  char result[128];
   uint8_t nDevices, ix = 0;
   Serial.println("\nI2C scan in progress...");
   nDevices = 0;
@@ -457,16 +482,18 @@ void i2cScan() {
   */
   int posX = 0;
   displayScroll("Scanning");
+  memset(msg, 0, 128);
+  uint8_t px = 0;
   for (addr = 1; addr < 128; addr++) {
     Wire.beginTransmission(addr);
     error = Wire.endTransmission();
     // Wire.beginTransmission(addr);
     // error = Wire.endTransmission();
     if (error == 0) {
-      Serial.print("0x");
-      if (addr < 16) Serial.write('0');
-      Serial.print(addr, HEX);
-      result[ix++] = addr;
+      sprintf(msg + px, "0x%2x ", addr);
+      Serial.print(msg + px);
+      // msg[ix++] = addr;
+      // I am not doing anything with the IDs for now.
       if (nDevices > 0 && nDevices % 3 == 0) {
         posY += 1;
         posX = 0;
@@ -475,19 +502,18 @@ void i2cScan() {
           for (uint8_t i = 0; i < 8; i++) {
             oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
             oledDumpBuffer(&oled, NULL);
-            delay(40);
           }
         }
       }
       nDevices++;
       if (hasOLED) {
-        sprintf(buff, "0x%2x ", addr);
-        oledWriteString(&oled, 0, posX, posY, buff, FONT_8x8, 0, 1);
+        oledWriteString(&oled, 0, posX, posY, msg + px, FONT_8x8, 0, 1);
         posX += 40;
       }
+      px += 5;
     } else {
       Serial.print("  . ");
-    } Serial.write(' ');
+    }
     if (addr > 0 && (addr + 1) % 16 == 0 && addr < 127) {
       Serial.write('\n');
       Serial.print(addr / 16 + 1);
@@ -496,7 +522,11 @@ void i2cScan() {
   }
   Serial.println("\n-------------------------------------------------------------------------------------");
   Serial.println("I2C devices found: " + String(nDevices));
+#ifdef __RAKBLE_H__
   sprintf(buff, "%d devices", nDevices);
+  sendToBle(buff);
+  sendToBle(msg);
+#endif
   /*
     for (uint8_t i = 0; i < 8; i++) {
     oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
@@ -527,10 +557,10 @@ void setup() {
     delay(500);
   } // Just for show
   Serial.println("0!");
-  Serial.println("RAKwireless LoRa P2P BLE Example");
+  Serial.println("RAKwireless LoRa P2P Kitchen Sink");
   Serial.println("------------------------------------------------------");
   Wire.begin();
-  Wire.setClock(1e6);
+  Wire.setClock(400000);
   // Test for OLED
   Wire.beginTransmission(0x3c);
   delay(100);
@@ -540,13 +570,13 @@ void setup() {
     if (hasOLED) {
       // the user wants OLED display
       uint8_t uc[8];
-      rc = oledInit(&oled, OLED_128x64, 0x3c, FLIPPED, INVERTED, HARDWARE_I2C, SDA_PIN, SCL_PIN, RESET_PIN, 1000000L);
+      rc = oledInit(&oled, OLED_128x64, 0x3c, FLIPPED, INVERTED, HARDWARE_I2C, SDA_PIN, SCL_PIN, RESET_PIN, 400000L);
       if (rc != OLED_NOT_FOUND) {
         oledSetBackBuffer(&oled, ucBuffer);
         oledSetTextWrap(&oled, 1);
         oledFill(&oled, 0, 1);
         oledSetContrast(&oled, 127);
-        oledWriteString(&oled, 0, -1, -1, (char *)"LoRa p2p", FONT_16x16, 0, 1);
+        oledWriteString(&oled, 0, -1, -1, "LoRa p2p", FONT_16x16, 0, 1);
       } else hasOLED = false;
     } else {
       Serial.println("But you specified you didn't want OLED display!");
@@ -570,7 +600,7 @@ void setup() {
   if (error == 0) {
     Serial.println("Temperature & Humidity Sensor present!");
     hasTH = th_sensor.init();
-    Serial.printf("RAK1901 init %s\r\n", hasTH ? "success" : "fail");
+    Serial.printf("RAK1901 init %s\n", hasTH ? "success" : "fail");
     th_sensor.update();
     temp = th_sensor.temperature();
     humid = th_sensor.humidity();
@@ -583,7 +613,7 @@ void setup() {
   if (error == 0) {
     Serial.println("Pressure Sensor present!");
     hasPA = p_sensor.init();
-    Serial.printf("RAK1902 init %s\r\n", hasPA ? "success" : "fail");
+    Serial.printf("RAK1902 init %s\n", hasPA ? "success" : "fail");
     HPa = p_sensor.pressure(MILLIBAR);
     if (hasOLED) displayScroll("* rak1902");
   }
@@ -594,7 +624,7 @@ void setup() {
   if (error == 0) {
     Serial.println("RAK1903 Light Sensor present!");
     hasLux = lux_sensor.init();
-    Serial.printf("RAK1903 init %s\r\n", hasLux ? "success" : "fail");
+    Serial.printf("RAK1903 init %s\n", hasLux ? "success" : "fail");
     Lux = lux_sensor.lux();
     if (hasOLED) displayScroll("* rak1903");
   }
@@ -633,24 +663,29 @@ void setup() {
   if (hasOLED) displayScroll("* P2P Start");
   char HardwareID[16]; // nrf52840
   strcpy(HardwareID, api.system.chipId.get().c_str());
-  Serial.printf("Hardware ID: %s\r\n", HardwareID);
+  Serial.printf("Hardware ID: %s\n", HardwareID);
   if (strcmp(HardwareID, "nrf52840") == 0) {
     Serial.println("BLE compatible!");
     if (hasOLED) displayScroll("* BLE available");
   }
-  Serial.printf("Model ID: %s\r\n", api.system.modelId.get().c_str());
-  Serial.printf("RUI API Version: %s\r\n", api.system.apiVersion.get().c_str());
-  Serial.printf("Firmware Version: %s\r\n", api.system.firmwareVersion.get().c_str());
-  Serial.printf("AT Command Version: %s\r\n", api.system.cliVersion.get().c_str());
+  sprintf(msg, "* Model ID: %s", api.system.modelId.get().c_str());
+  Serial.println(msg);
+  if (hasOLED) {
+    sprintf(msg, "* MCU: %s", api.system.modelId.get().c_str());
+    displayScroll(msg);
+  }
+  Serial.printf("* RUI API Version: %s\n", api.system.apiVersion.get().c_str());
+  Serial.printf("* Firmware Version: %s\n", api.system.firmwareVersion.get().c_str());
+  Serial.printf("* AT version: %s\n", api.system.cliVersion.get().c_str());
 
   // LoRa setup – everything else has been done for you. No need to fiddle with pins, etc
-  Serial.printf("Set work mode to P2P: %s\r\n", api.lorawan.nwm.set(0) ? "Success" : "Fail");
-  Serial.printf("Set P2P frequency to %3.3f: %s\r\n", (myFreq / 1e6), api.lorawan.pfreq.set(myFreq) ? "Success" : "Fail");
-  Serial.printf("Set P2P spreading factor to %d: %s\r\n", sf, api.lorawan.psf.set(sf) ? "Success" : "Fail");
-  Serial.printf("Set P2P bandwidth to %d: %s\r\n", bw, api.lorawan.pbw.set(bw) ? "Success" : "Fail");
-  Serial.printf("Set P2P code rate to 4/%d: %s\r\n", (cr + 5), api.lorawan.pcr.set(0) ? "Success" : "Fail");
-  Serial.printf("Set P2P preamble length to %d: %s\r\n", preamble, api.lorawan.ppl.set(8) ? "Success" : "Fail");
-  Serial.printf("Set P2P TX power to %d: %s\r\n", txPower, api.lorawan.ptp.set(22) ? "Success" : "Fail");
+  Serial.printf("Set work mode to P2P: %s\n", api.lorawan.nwm.set(0) ? "Success" : "Fail");
+  Serial.printf("Set P2P frequency to %3.3f: %s\n", (myFreq / 1e6), api.lorawan.pfreq.set(myFreq) ? "Success" : "Fail");
+  Serial.printf("Set P2P spreading factor to %d: %s\n", sf, api.lorawan.psf.set(sf) ? "Success" : "Fail");
+  Serial.printf("Set P2P bandwidth to %d: %s\n", bw, api.lorawan.pbw.set(bw) ? "Success" : "Fail");
+  Serial.printf("Set P2P code rate to 4/%d: %s\n", (cr + 5), api.lorawan.pcr.set(0) ? "Success" : "Fail");
+  Serial.printf("Set P2P preamble length to %d: %s\n", preamble, api.lorawan.ppl.set(8) ? "Success" : "Fail");
+  Serial.printf("Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(22) ? "Success" : "Fail");
 
   // LoRa callbacks
   api.lorawan.registerPRecvCallback(recv_cb);
@@ -698,7 +733,7 @@ void loop() {
     while (api.ble.uart.available()) {
       char c = api.ble.uart.read();
       if (c > 31) str1[ix++] = c;
-      // strip \r\n and the like
+      // strip \n and the like
       // this is ok because we expect text. You might want to adjust if you are accepting binary data
     }
     str1[ix] = 0;
