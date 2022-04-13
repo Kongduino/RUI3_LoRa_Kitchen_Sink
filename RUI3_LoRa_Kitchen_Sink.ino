@@ -5,6 +5,7 @@
 #include "ClosedCube_BME680.h"
 #include <ss_oled.h>
 /*
+   PATCHES TO BE DONE IN ORDER TO BE ABLE TO COMPILE!
   --> ss_oled.h
   #include <BitBang_I2C.h>
   #ifdef __RUI_TOP_H__
@@ -20,7 +21,11 @@
 #include "HTU21D.h"
 #include <CayenneLPP.h>
 #include <DS3231M.h> // Include the DS3231M RTC library
+#include "Melopero_RV3028.h" //http://librarymanager/All#Melopero_RV3028
+#include <BH1750.h> // https://github.com/claws/BH1750
 
+BH1750 bh1750;
+Melopero_RV3028 rak12002;
 DS3231M_Class DS3231M; // /< Create an instance of the DS3231M class
 CayenneLPP lpp(51);
 //Create an instance of the HTU21D object
@@ -29,7 +34,7 @@ HTU21D myHTU21D;
 rak1901 th_sensor;
 /** Air Pressure sensor **/
 rak1902 p_sensor;
-rak1903 lux_sensor;
+rak1903 rak1903_lux;
 ClosedCube_BME680 bme680;
 #define SDA_PIN WB_I2C1_SDA
 #define SCL_PIN WB_I2C1_SCL
@@ -45,7 +50,7 @@ int rc;
 SSOLED oled;
 
 static uint8_t ucBuffer[1024];
-bool hasOLED = true, hasTH = false, hasPA = false, hasLux = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false;
+bool hasOLED = true, hasTH = false, hasPA = false, has1903 = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false, hasRAK12002 = false, hasBH1750 = false;
 float temp, humid, HPa, Lux;
 long startTime;
 // LoRa SETUP
@@ -190,10 +195,10 @@ void sendLPP() {
     lpp.addTemperature(channel++, temp);
     lpp.addRelativeHumidity(channel++, humid);
   }
-  if (hasLux) {
+  if (has1903) {
     if (hasOLED) displayScroll(" * rak1903");
-    lux_sensor.update();
-    lpp.addLuminosity(channel++, lux_sensor.lux());
+    rak1903_lux.update();
+    lpp.addLuminosity(channel++, rak1903_lux.lux());
   }
   uint8_t ln = lpp.getSize();
   api.lorawan.precv(0);
@@ -242,11 +247,17 @@ void sendPA() {
 
 void sendLux() {
   // Update lux value then send.
-  if (lux_sensor.update()) {
-    Lux = lux_sensor.lux();
-    sprintf(msg, "Lux: %.2f", Lux);
+  if (has1903) {
+    rak1903_lux.update();
+    Lux = rak1903_lux.lux();
+    sprintf(msg, "rak1903 lux: %.2f", Lux);
     sendMsg(msg);
-  } else Serial.println("Couldn't update lux sensor!");
+  }
+  if (hasBH1750) {
+    Lux = bh1750.readLightLevel();
+    sprintf(msg, "bh1750 lux: %.2f", Lux);
+    sendMsg(msg);
+  }
 }
 
 void sendBME680() {
@@ -288,6 +299,7 @@ void sendMsg(char* msgToSend) {
     displayScroll(msgToSend);
   }
   /*
+    // Results are not good...
     char test0[64], test1[64];
     Serial.println("Unishox2 compression:");
     int cLen = unishox2_compress(msg, ln, test0, USX_PSET_FAVOR_ALPHA);
@@ -309,19 +321,42 @@ float calcAlt(float pressure) {
 }
 
 void displayTime() {
-  DateTime now = DS3231M.now(); // get the current time from device
-  // Output if seconds have changed
-  // Use sprintf() to pretty print the date/time with leading zeros
-  sprintf(msg, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-  Serial.println(msg);
+  if (hasRAK12002) {
+    sprintf(msg, "rak12002 date: %04d/%02d/%02d", rak12002.getYear(), rak12002.getMonth(), rak12002.getDate());
+    Serial.println(msg);
 #ifdef __RAKBLE_H__
-  sendToBle(msg);
+    sendToBle(msg);
 #endif
-  if (hasOLED) {
-    sprintf(msg, "%04d/%02d/%02d", now.year(), now.month(), now.day());
-    displayScroll(msg);
-    sprintf(msg, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
-    displayScroll(msg);
+    sprintf(msg, "rak12002 time: %02d:%02d:%02d UTC", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      sprintf(msg, "%04d/%02d/%02d", rak12002.getYear(), rak12002.getMonth(), rak12002.getDate());
+      displayScroll(msg);
+      sprintf(msg, "%02d:%02d:%02d", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
+      displayScroll(msg);
+    }
+    return;
+  }
+
+  if (hasDS3231M) {
+    DateTime now = DS3231M.now(); // get the current time from device
+    // Output if seconds have changed
+    // Use sprintf() to pretty print the date/time with leading zeros
+    sprintf(msg, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      sprintf(msg, "%04d/%02d/%02d", now.year(), now.month(), now.day());
+      displayScroll(msg);
+      sprintf(msg, "%02d:%02d:%02d", now.hour(), now.minute(), now.second());
+      displayScroll(msg);
+    }
+    return;
   }
 }
 
@@ -329,28 +364,44 @@ void handleCommands(char *cmd) {
   if (cmd[0] != '/') return;
   // If the string doesn't start with / – it's not a command
 
-  if (hasDS3231M) {
-    if (cmd[1] == 's' &cmd[2] == 'e' &cmd[3] == 't' &cmd[4] == ' ') {
-      unsigned int tokens, year, month, day, hour, minute, second;
-      // Variables to hold parsed date/time
-      // Use sscanf() to parse the date/time into component variables
-      tokens = sscanf(cmd, "%*s %u-%u-%u %u:%u:%u;", &year, &month, &day, &hour, &minute, &second);
-      if (tokens != 6) {
-        // Check to see if it was parsed correctly
-        Serial.print(F("Unable to parse date/time\n"));
-      } else {
-        DS3231M.adjust(DateTime(year, month, day, hour, minute, second));
-        // Adjust the RTC date/time
-        Serial.print(F("Date / Time set."));
-#ifdef __RAKBLE_H__
-        sendToBle("Date / Time set.");
-#endif
-      }
+  if (hasDS3231M || hasRAK12002) {
+    if (strcmp(cmd, "/rtc") == 0) {
       displayTime();
       return;
     }
-    if (strcmp(cmd, "/rtc") == 0) {
-      displayTime();
+    if (cmd[1] == 's' &cmd[2] == 'e' &cmd[3] == 't' &cmd[4] == ' ') {
+      // Variables to hold parsed date/time
+      // Use sscanf() to parse the date/time into component variables
+      if (hasDS3231M) {
+        unsigned int tokens, year, month, day, hour, minute, second;
+        tokens = sscanf(cmd, "%*s %u-%u-%u %u:%u:%u;", &year, &month, &day, &hour, &minute, &second);
+        if (tokens != 6) {
+          // Check to see if it was parsed correctly
+          Serial.print(F("Unable to parse date/time\n"));
+        } else {
+          DS3231M.adjust(DateTime(year, month, day, hour, minute, second));
+          // Adjust the RTC date/time
+#ifdef __RAKBLE_H__
+          sendToBle("Date / Time set.");
+#endif
+          displayTime();
+        }
+      } else {
+        unsigned int tokens, year, month, dayOfWeek, day, hour, minute, second;
+        tokens = sscanf(cmd, "%*s %u-%u-%u %u %u:%u:%u;", &year, &month, &dayOfWeek, &day, &hour, &minute, &second);
+        if (tokens != 7) {
+          // Check to see if it was parsed correctly
+          Serial.print(F("Unable to parse date/time\n"));
+        } else {
+          rak12002.setTime(year, month, dayOfWeek, day, hour, minute, second);
+          // Adjust the RTC date/time
+#ifdef __RAKBLE_H__
+          sendToBle("Date / Time set.");
+#endif
+          displayTime();
+        }
+      }
+      return;
     }
   }
 
@@ -455,8 +506,8 @@ void handleCommands(char *cmd) {
   }
 
   if (strcmp(cmd, "/lux") == 0) {
-    if (hasLux) sendLux();
-    else Serial.println("No RAK1903 module installed!");
+    if (has1903||hasBH1750) sendLux();
+    else Serial.println("No light sensor installed!");
     return;
   }
 }
@@ -524,7 +575,7 @@ void i2cScan() {
       }
       px += 5;
     } else {
-      Serial.print("  . ");
+      Serial.print("  .  ");
     }
     if (addr > 0 && (addr + 1) % 16 == 0 && addr < 127) {
       Serial.write('\n');
@@ -597,13 +648,27 @@ void setup() {
   // Even if the user wanted it – since it ain't there, we set it to false.
 
   // Test for rtc
-  Wire.beginTransmission(0x68);
+  Wire.beginTransmission(0x52);
   error = Wire.endTransmission();
   if (error == 0) {
-    Serial.println("DS3231M RTC present!");
-    hasDS3231M = DS3231M.begin();
-    Serial.printf("DS3231M init %s\n", hasDS3231M ? "success" : "fail");
-    if (hasDS3231M && hasOLED) displayScroll("* DS3231M RTCC");
+    Serial.println("RAK12002 RTC present!");
+    hasRAK12002 = true;
+    rak12002.initI2C(); // First initialize and create the rtc device
+    rak12002.writeToRegister(0x35, 0x00);
+    rak12002.writeToRegister(0x37, 0xB4); //Direct Switching Mode (DSM): when VDD < VBACKUP, switchover occurs from VDD to VBACKUP
+    rak12002.set24HourMode(); // Set the device to use the 24-hour format (default) instead of the 12-hour format
+    if (hasOLED) displayScroll("* RAK12002 RTC");
+  }
+
+  if (!hasRAK12002) {
+    Wire.beginTransmission(0x68);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      Serial.println("DS3231M RTC present!");
+      hasDS3231M = DS3231M.begin();
+      Serial.printf("DS3231M init %s\n", hasDS3231M ? "success" : "fail");
+      if (hasDS3231M && hasOLED) displayScroll("* DS3231M RTC");
+    }
   }
 
   // Test for rak1901
@@ -635,10 +700,22 @@ void setup() {
   error = Wire.endTransmission();
   if (error == 0) {
     Serial.println("RAK1903 Light Sensor present!");
-    hasLux = lux_sensor.init();
-    Serial.printf("RAK1903 init %s\n", hasLux ? "success" : "fail");
-    Lux = lux_sensor.lux();
+    has1903 = rak1903_lux.init();
+    Serial.printf("RAK1903 init %s\n", has1903 ? "success" : "fail");
+    Lux = rak1903_lux.lux();
     if (hasOLED) displayScroll("* rak1903");
+  }
+
+  // Test for BH1750
+  Wire.beginTransmission(0x23);
+  error = Wire.endTransmission();
+  if (error == 0) {
+    Serial.println("hasBH1750 Light Sensor present!");
+    hasBH1750 = true;
+    bh1750.begin();
+    Lux = bh1750.readLightLevel();
+    Serial.printf("BH1750 init: %d\n", Lux);
+    if (hasOLED) displayScroll("* bh1750");
   }
 
   // Test for rak1906

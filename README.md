@@ -29,13 +29,13 @@ It accepts so far thirteen commands, via Serial and/or BLE:
 * `/th`: send the temperature and humidity if you have a [RAK1901](https://store.rakwireless.com/products/rak1901-shtc3-temperature-humidity-sensor) connected.
 * `/pa`: send the air pressure if you have a [RAK1902](https://store.rakwireless.com/products/rak1902-kps22hb-barometric-pressure-sensor) connected.
 * `/htu`: send the temperature and humidity if you have an [HTU21D](https://www.mikroe.com/htu21d-click), or similar, connected.
-* `/lux`: send the Ambient Light level if you have a [RAK1903](https://store.rakwireless.com/products/rak1903-opt3001dnpr-ambient-light-sensor) connected.
+* `/lux`: send the Ambient Light level if you have a [RAK1903](https://store.rakwireless.com/products/rak1903-opt3001dnpr-ambient-light-sensor), or a BH1750 (using [this library](https://github.com/claws/BH1750)) connected.
 * `/bme`: send the temperature, humidity and air pressure if you have a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor) connected.
 ⁉️ HPa data seems off by quite a bit, at least on my rak1906...
 * `/msl xyzt`: sets the MSL to a new value. Useful for the next command.
 * `/alt`: calculates the altitude from the current pressure and MSL. If both 1902 and 1906 are present, it will do it twice.
-* `/set yyyy-mm-dd hh:mn:ss` sets the date and time if you have a DS3231M RTC.
-* `/rtc` displays the date and time if you have a DS3231M RTC.
+* `/set yyyy-mm-dd hh:mn:ss` sets the date and time if you have a DS3231M (using the [DS3231M library](https://github.com/Zanduino/DS3231M)), or a [RAK12002](https://store.rakwireless.com/products/rtc-module-rak12002) RTC module, using the [Melopero_RV3028 library](https://github.com/melopero/Melopero_RV-3028_Arduino_Library).
+* `/rtc` displays the date and time if you have a DS3231M or RAK12002 RTC.
 
 Yes, the sketch recognizes the sensors on its own.
 
