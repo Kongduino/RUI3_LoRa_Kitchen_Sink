@@ -20,6 +20,7 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 
 ![BLE](BLE.png)
 
+## COMMANDS
 It accepts so far 16 commands, via Serial and/or BLE:
 
 ### System
