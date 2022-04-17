@@ -48,6 +48,9 @@ It accepts so far 16 commands, via Serial and/or BLE:
 **Note:** There's a bug presently in the API, whereas BW values below 7, ie 125 KHz, are not recognized. Temporary fix until the engineers enables all 10 values, values between 0 and 7 are set to 125 KHz. Normal values are, 0 to 9: 7.810, 10.420, 15.630, 20.830, 31.250, 41.67, 62.50, 125, 250, 500.
 * `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 come in -H and -L versions, so not all frequencies will actually work.
 
+![P2P settings](P2Psettings.png)
+
+
 **Yes, the sketch recognizes the sensors on its own.**
 
 ### OLED
