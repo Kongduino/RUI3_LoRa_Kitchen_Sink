@@ -18,7 +18,7 @@ python3 ~/Library/Arduino15/packages/rak_rui/tools/uploader_ymodem/1.0.0/uploade
 
 The command to upload the firmware looks like this. The path to the Arduino temp folder and the USB port will differ, but at least on Mac OS X that's pretty close. You can `open` in the Terminal that temp folder (or `cd` to it) and save the `.zip` file for RAK4631, and `.bin` file for RAK3172. I tend to add then the MCU's name to the file. With that file saved somewhere safe, you can reflash the firmware without having to recompile it. Useful, among other things, if you want to flash several boards, or switch between different firmwares.
 
-![BLE](BLE.png)
+![BLE](assets/BLE.png)
 
 ## COMMANDS
 It accepts so far 16 commands, via Serial and/or BLE:
@@ -48,7 +48,7 @@ It accepts so far 16 commands, via Serial and/or BLE:
 **Note:** There's a bug presently in the API, whereas BW values below 7, ie 125 KHz, are not recognized. Temporary fix until the engineers enables all 10 values, values between 0 and 7 are set to 125 KHz. Normal values are, 0 to 9: 7.810, 10.420, 15.630, 20.830, 31.250, 41.67, 62.50, 125, 250, 500.
 * `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 come in -H and -L versions, so not all frequencies will actually work.
 
-![P2P settings](P2Psettings.png)
+![P2P settings](assets/P2Psettings.png)
 
 
 **Yes, the sketch recognizes the sensors on its own.**
@@ -75,9 +75,9 @@ Where `YOURID` is your login ID on Mac. This requires a little adjustment for Wi
 
 Same procedure for the RTC: in [`DS3231M.h`](https://github.com/Zanduino/DS3231M) below `#include "Arduino.h"` add the same patch as for `ss_oled.h`. In a coming release, the RTC will be used to timestamp packets.
 
-![smooth](oledpingpong.gif)
+![smooth](assets/oledpingpong.gif)
 
-![Serial_Screenshot](Serial_Screenshot.png)
-![BLE_Screenshot](BLE_Screenshot.jpg)
-![Sensors_A](SensorsA.png)
-![Sensors_B](SensorsB.png)
+![Serial_Screenshot](assets/Serial_Screenshot.png)
+![BLE_Screenshot](assets/BLE_Screenshot.jpg)
+![Sensors_A](assets/SensorsA.png)
+![Sensors_B](assets/SensorsB.png)
