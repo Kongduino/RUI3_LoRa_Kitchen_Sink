@@ -52,7 +52,7 @@ It accepts so far 16 commands, via Serial and/or BLE:
 
 ### OLED
 
-I added recognition of an OLED display, and implemented display of relevant information with very smooth scrolling, thanks to the [ss_oled library](https://github.com/bitbank2/ss_oled). You however need to patch the ss_oled.h header file: currently RUI3 is missing stuff from pgmspace.
+I added recognition of an OLED display, and implemented display of relevant information with very smooth scrolling, thanks to the [ss_oled library](https://github.com/bitbank2/ss_oled). You however need to patch the `ss_oled.h` header file: currently RUI3 is missing stuff from pgmspace.
 
 Right under
 
