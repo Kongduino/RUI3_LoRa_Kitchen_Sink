@@ -60,6 +60,13 @@ double myFreq = 868000000;
 float MSL = 1013.5;
 uint16_t counter = 0, sf = 12, bw = 125, cr = 0, preamble = 8, txPower = 22;
 char msg[128];
+uint32_t myBWs[10] = {125, 125, 125, 125, 125, 125, 125, 125, 250, 500};
+/*
+  There's a bug presently in the API, whereas BW values below 7/125 KHz are not recognized.
+  Temporary fix until the engineers enables all 10 values,
+  SignalBandwidth   0     1     2      3      4      5      6    7   8    9
+  BW_L [kHz]      7.810 10.420 15.630 20.830 31.250 41.67 62.50 125 250  500
+*/
 
 void hexDump(uint8_t* buf, uint16_t len) {
   // Something similar to the Unix/Linux hexdump -C command
@@ -154,7 +161,6 @@ void send_cb(void) {
 
 #ifdef __RAKBLE_H__
 void sendToBle(char *msgToSend) {
-  Serial.println(F("Sending to BLE..."));
   api.ble.uart.write((uint8_t*)msgToSend, strlen(msgToSend));
 }
 #endif
@@ -247,27 +253,38 @@ void sendPA() {
 
 void sendLux() {
   // Update lux value then send.
-  if (has1903) {
+  if (has1903 && hasBH1750) {
     rak1903_lux.update();
     Lux = rak1903_lux.lux();
-    sprintf(msg, "rak1903 lux: %.2f", Lux);
+    float Lux0 = bh1750.readLightLevel();
+    sprintf(msg, "lux: %.2f %.2f", Lux0, Lux);
     sendMsg(msg);
-  }
-  if (hasBH1750) {
-    Lux = bh1750.readLightLevel();
-    sprintf(msg, "bh1750 lux: %.2f", Lux);
-    sendMsg(msg);
+    return;
+  } else {
+    if (has1903) {
+      rak1903_lux.update();
+      Lux = rak1903_lux.lux();
+      sprintf(msg, "rak1903: %.2f", Lux);
+      sendMsg(msg);
+    }
+    if (hasBH1750) {
+      Lux = bh1750.readLightLevel();
+      sprintf(msg, "bh1750: %.2f", Lux);
+      sendMsg(msg);
+    }
   }
 }
 
-void sendBME680() {
+void sendBME680(bool showPA = true) {
   ClosedCube_BME680_Status status = bme680.readStatus();
   //  if (status.newDataFlag) {
   temp = bme680.readTemperature();
   HPa = bme680.readPressure();
   humid = bme680.readHumidity();
-  sprintf(msg, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
-  if (hasOLED) {
+  if (showPA) sprintf(msg, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
+  else sprintf(msg, "%.2f C %.2f%%", temp, humid);
+  if (hasOLED && showPA) {
+    // if we show all 3 data points: do it on two lines
     hasOLED = false;
     // we will display on 2 lines, separately
     sendMsg(msg);
@@ -364,12 +381,251 @@ void handleCommands(char *cmd) {
   if (cmd[0] != '/') return;
   // If the string doesn't start with / – it's not a command
 
+  // /p2p command: display main P2P settings
+  if (cmd[1] == 'p' && cmd[2] == '2' && cmd[3] == 'p') {
+    float f0 = myFreq / 1e6, f1 = api.lorawan.pfreq.get() / 1e6;
+    // check stored value vs real value
+    sprintf(msg, "P2P frequency: %.3f/%.3f MHz\n", f0, f1);
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      sprintf(msg, "Fq: %.3f MHz\n", f1);
+      displayScroll(msg);
+    }
+    sprintf(msg, "P2P SF: %d\n", sf);
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      displayScroll(msg);
+    }
+    sprintf(msg, "P2P bandwidth: %d KHz\n", bw);
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      sprintf(msg, "BW: %d KHz", bw);
+      displayScroll(msg);
+    }
+    sprintf(msg, "P2P TX power: %d\n", txPower);
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      sprintf(msg, "TX power: %d", txPower);
+      displayScroll(msg);
+    }
+    return;
+  }
+
+  // /sf command
+  if (cmd[1] == 's' && cmd[2] == 'f') {
+    if (cmd[3] == '?' || cmd[3] == 0) {
+      sprintf(msg, "P2P SF: %d\n", sf);
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    } else if (cmd[3] == ' ') {
+      // sf xxxx set SF
+      uint16_t tmp = atoi(cmd + 4);
+      if (tmp < 5 || tmp > 12) {
+        sprintf(msg, "Invalid SF value: %d\n", tmp);
+        Serial.print(msg);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
+        return;
+      }
+      sf = tmp;
+      api.lorawan.precv(0);
+      // turn off reception
+      sprintf(msg, "Set P2P spreading factor to %d: %s\n", sf, api.lorawan.psf.set(sf) ? "Success" : "Fail");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      api.lorawan.precv(65534);
+      if (hasOLED) {
+        sprintf(msg, "SF set to %d", sf);
+        displayScroll(msg);
+      }
+      return;
+    } else {
+      sprintf(msg, "Unknown command!");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    }
+  }
+
+  // /bw command
+  if (cmd[1] == 'b' && cmd[2] == 'w') {
+    if (cmd[3] == '?' || cmd[3] == 0) {
+      sprintf(msg, "P2P bandwidth: %d KHz\n", bw);
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        sprintf(msg, "BW: %d KHz", bw);
+        displayScroll(msg);
+      }
+      return;
+    } else if (cmd[3] == ' ') {
+      // bw xxxx set BW
+      uint16_t tmp = atoi(cmd + 4);
+      if (tmp > 9) {
+        sprintf(msg, "Invalid BW value: %d\n", tmp);
+        Serial.print(msg);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
+        return;
+      }
+      bw = myBWs[tmp];
+      api.lorawan.precv(0);
+      // turn off reception
+      sprintf(msg, "Set P2P bandwidth to %d/%d: %s\n", tmp, bw, api.lorawan.pbw.set(bw) ? "Success" : "Fail");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      api.lorawan.precv(65534);
+      if (hasOLED) {
+        sprintf(msg, "New BW: %d", bw);
+        displayScroll(msg);
+      }
+      return;
+    } else {
+      sprintf(msg, "Unknown command!");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    }
+  }
+
+  // /fq command
+  if (cmd[1] == 'f' && cmd[2] == 'q') {
+    if (cmd[3] == '?' || cmd[3] == 0) {
+      sprintf(msg, "P2P frequency: %.3f MHz\n", (myFreq / 1e6));
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        sprintf(msg, "Fq: %.3f MHz\n", (myFreq / 1e6));
+        displayScroll(msg);
+      }
+      return;
+    } else if (cmd[3] == ' ') {
+      // fq xxxx set frequency
+      float tmp = atof(cmd + 4);
+      if (tmp < 150.0 || tmp > 960.0) {
+        // sx1262 freq range 150MHz to 960MHz
+        // Your chip might not support all...
+        sprintf(msg, "Invalid frequency value: %d\n", tmp);
+        Serial.print(msg);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
+        return;
+      }
+      myFreq = tmp * 1e6;
+      api.lorawan.precv(0);
+      // turn off reception
+      sprintf(msg, "Set P2P frequency to %3.3f: %s MHz\n", (myFreq / 1e6), api.lorawan.pfreq.set(myFreq) ? "Success" : "Fail");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      api.lorawan.precv(65534);
+      if (hasOLED) {
+        sprintf(msg, "New freq: %.3f", myFreq);
+        displayScroll(msg);
+      }
+      return;
+    }
+  }
+
+  // /tx command
+  if (cmd[1] == 't' && cmd[2] == 'x') {
+    if (cmd[3] == '?' || cmd[3] == 0) {
+      sprintf(msg, "P2P TX power: %d\n", txPower);
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        sprintf(msg, "TX power: %d", txPower);
+        displayScroll(msg);
+      }
+      return;
+    } else if (cmd[3] == ' ') {
+      // tx xxxx set tx power
+      uint16_t tmp = atoi(cmd + 4);
+      if (tmp < 5 || tmp > 22) {
+        sprintf(msg, "Invalid TX power value: %d\n", tmp);
+        Serial.print(msg);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
+        return;
+      }
+      txPower = tmp;
+      api.lorawan.precv(0);
+      // turn off reception
+      sprintf(msg, "Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(22) ? "Success" : "Fail");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      api.lorawan.precv(65534);
+      if (hasOLED) {
+        sprintf(msg, "New TX pwr: %d", txPower);
+        displayScroll(msg);
+      }
+      return;
+    } else {
+      sprintf(msg, "Unknown command!");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    }
+  }
+
+  // RTC related commands
+  // Only parsed if there's an RTC installed!
   if (hasDS3231M || hasRAK12002) {
     if (strcmp(cmd, "/rtc") == 0) {
       displayTime();
       return;
     }
-    if (cmd[1] == 's' &cmd[2] == 'e' &cmd[3] == 't' &cmd[4] == ' ') {
+    if (cmd[1] == 's' && cmd[2] == 'e' && cmd[3] == 't' && cmd[4] == ' ') {
       // Variables to hold parsed date/time
       // Use sscanf() to parse the date/time into component variables
       if (hasDS3231M) {
@@ -403,16 +659,6 @@ void handleCommands(char *cmd) {
       }
       return;
     }
-  }
-
-  if (strcmp(cmd, "/ping") == 0) {
-    sendPing();
-    return;
-  }
-
-  if (cmd[1] == '>' && cmd[2] == ' ') {
-    sendMsg(cmd + 3);
-    return;
   }
 
   if (strcmp(cmd, "/alt") == 0) {
@@ -476,20 +722,44 @@ void handleCommands(char *cmd) {
     return;
   }
 
+  if (strcmp(cmd, "/ping") == 0) {
+    sendPing();
+    return;
+  }
+
+  if (cmd[1] == '>' && cmd[2] == ' ') {
+    sendMsg(cmd + 3);
+    return;
+  }
+
   if (strcmp(cmd, "/lpp") == 0) {
+    // Sends all the available data points as a Cayenne LPP packet
     sendLPP();
     return;
   }
 
+  // the /th command works for any sensor that has T and H
   if (strcmp(cmd, "/th") == 0) {
-    if (hasTH) sendTH();
-    else Serial.println("No RAK1901 module installed!");
-    return;
-  }
-
-  if (strcmp(cmd, "/htu") == 0) {
-    if (hasHTU21D) sendHTU21D();
-    else Serial.println("No HTU21D module installed!");
+    bool hasSomething = false;
+    if (hasTH) {
+      sendTH();
+      hasSomething = true;
+    }
+    if (hasHTU21D) {
+      sendHTU21D();
+      hasSomething = true;
+    }
+    if (hasBME680) {
+      sendBME680(false);
+      hasSomething = true;
+    }
+    if (!hasSomething) {
+      sprintf(msg, "No Temp/Humidity module installed!");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+    }
     return;
   }
 
@@ -506,7 +776,7 @@ void handleCommands(char *cmd) {
   }
 
   if (strcmp(cmd, "/lux") == 0) {
-    if (has1903||hasBH1750) sendLux();
+    if (has1903 || hasBH1750) sendLux();
     else Serial.println("No light sensor installed!");
     return;
   }
@@ -550,8 +820,6 @@ void i2cScan() {
   for (addr = 1; addr < 128; addr++) {
     Wire.beginTransmission(addr);
     error = Wire.endTransmission();
-    // Wire.beginTransmission(addr);
-    // error = Wire.endTransmission();
     if (error == 0) {
       sprintf(msg + px, "0x%2x ", addr);
       Serial.print(msg + px);
@@ -583,10 +851,11 @@ void i2cScan() {
       Serial.print(". | ");
     }
   }
+  msg[px] = 0;
   Serial.println("\n-------------------------------------------------------------------------------------");
   Serial.println("I2C devices found: " + String(nDevices));
 #ifdef __RAKBLE_H__
-  sprintf(buff, "%d devices", nDevices);
+  sprintf(buff, "%d devices\n", nDevices);
   sendToBle(buff);
   sendToBle(msg);
 #endif
@@ -797,7 +1066,8 @@ void setup() {
   // now support SET_ENC_WITH_MITM and SET_ENC_NO_MITM
   api.ble.uart.setPermission(RAK_SET_ENC_WITH_MITM);
 
-  char ble_name[] = "3615_My_RAK"; // You have to be French to understand this joke
+  char ble_name[32];
+  sprintf(ble_name, "RAK_%s", api.ble.mac.get()); // You have to be French to understand this joke
   Serial.print("Setting Broadcast Name to: ");
   Serial.println(ble_name);
   api.ble.settings.broadcastName.set(ble_name, strlen(ble_name));
@@ -806,6 +1076,7 @@ void setup() {
 #endif
   // This version doesn't have an automatic Tx functionality:
   // YOU are in charge of sending, either via Serial or BLE.
+  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   startTime = millis();
 }
 
