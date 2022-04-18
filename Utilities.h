@@ -4,16 +4,19 @@ void sendToBle(char *msgToSend) {
 }
 #endif
 
-int posY = 1;
+int posY = 1; // First 2 lines are reserved for the title)
+// Since displayScroll starts with incrementing posY, we start with posY = 1
 void displayScroll(char *msgToSend) {
   posY += 1;
   if (posY == 8) {
-    posY = 7;
+    posY = 7; // keep it at 7, the last line
     for (uint8_t i = 0; i < 8; i++) {
+      // and scroll, one pixel line – not text line – at a time.
       oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
       oledDumpBuffer(&oled, NULL);
     }
   }
+  // then display text
   oledWriteString(&oled, 0, 0, posY, msgToSend, FONT_8x8, 0, 1);
 }
 
@@ -27,18 +30,21 @@ void hexDump(uint8_t* buf, uint16_t len) {
   for (i = 0; i < len; i += 16) {
     if (i % 128 == 0) Serial.print(F("   +------------------------------------------------+ +----------------+\n"));
     char s[] = "|                                                | |                |\n";
+    // pre-formated line. We will replace the spaces with text when appropriate.
     uint8_t ix = 1, iy = 52, j;
     for (j = 0; j < 16; j++) {
       if (i + j < len) {
         uint8_t c = buf[i + j];
+        // fastest way to convert a byte to its 2-digit hex equivalent
         s[ix++] = alphabet[(c >> 4) & 0x0F];
         s[ix++] = alphabet[c & 0x0F];
         ix++;
         if (c > 31 && c < 128) s[iy++] = c;
-        else s[iy++] = '.';
+        else s[iy++] = '.'; // display ASCII code 0x20-0x7F or a dot.
       }
     }
     index = i / 16;
+    // display line number then the text
     if (i < 256) Serial.write(' ');
     Serial.print(index, HEX); Serial.write('.');
     Serial.print(s);
