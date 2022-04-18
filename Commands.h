@@ -44,6 +44,14 @@ void handleCommands(char *cmd) {
       sprintf(msg, "BW: %d KHz", bw);
       displayScroll(msg);
     }
+    sprintf(msg, "P2P C/R: 4/%d\n", (cr + 5));
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      displayScroll(msg);
+    }
     sprintf(msg, "P2P TX power: %d\n", txPower);
     Serial.print(msg);
 #ifdef __RAKBLE_H__

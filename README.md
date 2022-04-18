@@ -21,7 +21,7 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 ![BLE](assets/BLE.png)
 
 ## COMMANDS
-It accepts so far 16 commands, via Serial and/or BLE:
+It accepts so far 17 commands, via Serial and/or BLE:
 
 ### System
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
@@ -46,6 +46,7 @@ It accepts so far 16 commands, via Serial and/or BLE:
 * `/sf`: `/sf` or `/sf?` displays the current spreading factor used, whereas `/sf 5..12` sets it.
 * `/bw`: `/bw` or `/bw?` displays the current bandwidth used, in KHz, whereas `/bw 0..9` sets it.
 **Note:** There's a bug presently in the API, whereas BW values below 7, ie 125 KHz, are not recognized. Temporary fix until the engineers enables all 10 values, values between 0 and 7 are set to 125 KHz. Normal values are, 0 to 9: 7.810, 10.420, 15.630, 20.830, 31.250, 41.67, 62.50, 125, 250, 500.
+* `/cr`: `/cr` or `/cr?` displays the current coding rate used, whereas `/cr 5..8` sets it.
 * `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 come in -H and -L versions, so not all frequencies will actually work.
 
 ![P2P settings](assets/P2Psettings.png)
