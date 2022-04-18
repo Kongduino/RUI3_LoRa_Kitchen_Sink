@@ -590,9 +590,9 @@ void setup() {
   Serial.printf("Set P2P frequency to %3.3f: %s\n", (myFreq / 1e6), api.lorawan.pfreq.set(myFreq) ? "Success" : "Fail");
   Serial.printf("Set P2P spreading factor to %d: %s\n", sf, api.lorawan.psf.set(sf) ? "Success" : "Fail");
   Serial.printf("Set P2P bandwidth to %d: %s\n", bw, api.lorawan.pbw.set(bw) ? "Success" : "Fail");
-  Serial.printf("Set P2P code rate to 4/%d: %s\n", (cr + 5), api.lorawan.pcr.set(0) ? "Success" : "Fail");
-  Serial.printf("Set P2P preamble length to %d: %s\n", preamble, api.lorawan.ppl.set(8) ? "Success" : "Fail");
-  Serial.printf("Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(22) ? "Success" : "Fail");
+  Serial.printf("Set P2P coding rate to 4/%d: %s\n", (cr + 5), api.lorawan.pcr.set(cr) ? "Success" : "Fail");
+  Serial.printf("Set P2P preamble length to %d: %s\n", preamble, api.lorawan.ppl.set(preamble) ? "Success" : "Fail");
+  Serial.printf("Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(txPower) ? "Success" : "Fail");
 
   // LoRa callbacks
   api.lorawan.registerPRecvCallback(recv_cb);

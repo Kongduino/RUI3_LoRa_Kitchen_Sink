@@ -157,6 +157,56 @@ void handleCommands(char *cmd) {
     }
   }
 
+  // /sf command
+  if (cmd[1] == 'c' && cmd[2] == 'r') {
+    if (cmd[3] == '?' || cmd[3] == 0) {
+      sprintf(msg, "P2P C/R: 4/%d\n", (cr + 5));
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    } else if (cmd[3] == ' ') {
+      // cr xxxx set CR
+      uint16_t tmp = atoi(cmd + 4);
+      if (tmp < 5 || tmp > 8) {
+        sprintf(msg, "Invalid C/R value: %d\n", tmp);
+        Serial.print(msg);
+#ifdef __RAKBLE_H__
+        sendToBle(msg);
+#endif
+        return;
+      }
+      cr = tmp - 5;
+      api.lorawan.precv(0);
+      // turn off reception
+      sprintf(msg, "Set P2P coding rate to 4/%d: %s\n", (cr + 5), api.lorawan.pcr.set(cr) ? "Success" : "Fail");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      api.lorawan.precv(65534);
+      if (hasOLED) {
+        sprintf(msg, "C/R set to %d", sf);
+        displayScroll(msg);
+      }
+      return;
+    } else {
+      sprintf(msg, "Unknown command!");
+      Serial.print(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) {
+        displayScroll(msg);
+      }
+      return;
+    }
+  }
+
   // /fq command
   if (cmd[1] == 'f' && cmd[2] == 'q') {
     if (cmd[3] == '?' || cmd[3] == 0) {
