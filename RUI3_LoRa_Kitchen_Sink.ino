@@ -174,6 +174,17 @@ void sendLPP() {
     lpp.addLuminosity(channel++, rak1903_lux.lux());
   }
   uint8_t ln = lpp.getSize();
+  if (ln == 0) {
+    sprintf(msg, "Nothing to send!");
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) {
+      displayScroll(msg);
+    }
+    return;
+  }
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
   uint8_t lBuff[48];
@@ -370,7 +381,7 @@ void i2cScan() {
     Wire.beginTransmission(addr);
     error = Wire.endTransmission();
     if (error == 0) {
-      sprintf(msg + px, "0x%2x ", addr);
+      sprintf(msg + px, "0x%2x      ", addr);
       Serial.print(msg + px);
       // msg[ix++] = addr;
       // I am not doing anything with the IDs for now.
@@ -408,14 +419,7 @@ void i2cScan() {
   sendToBle(buff);
   sendToBle(msg);
 #endif
-  /*
-    for (uint8_t i = 0; i < 8; i++) {
-    oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
-    oledDumpBuffer(&oled, NULL);
-    }
-    oledWriteString(&oled, 0, 0, 7, buff, FONT_8x8, 0, 1);
-    posY = 7;
-  */
+  sprintf(buff, "devices: %d     ", nDevices);
   displayScroll(buff);
 }
 

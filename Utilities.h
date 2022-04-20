@@ -4,7 +4,7 @@ void sendToBle(char *msgToSend) {
 }
 #endif
 
-int posY = 1; // First 2 lines are reserved for the title)
+int posY = 1; // First 2 lines are reserved for the title.
 // Since displayScroll starts with incrementing posY, we start with posY = 1
 void displayScroll(char *msgToSend) {
   posY += 1;
