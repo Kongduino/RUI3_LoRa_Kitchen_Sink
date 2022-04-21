@@ -377,7 +377,6 @@ void setup() {
   Serial.println("RAKwireless LoRa P2P Kitchen Sink");
   Serial.println("------------------------------------------------------");
   cmdCount = sizeof(cmds)/sizeof(myCommand);
-  Serial.printf("Available commands: %d\n", cmdCount);
   handleHelp("/help");
   Wire.begin();
   Wire.setClock(400000);

@@ -59,6 +59,7 @@ myCommand cmds[] = {
 };
 
 void handleHelp(char *param) {
+  Serial.printf("Available commands: %d\n", cmdCount);
   for (int i = 0; i < cmdCount; i++) {
     sprintf(msg, " . %s: %s", cmds[i].name, cmds[i].help);
     Serial.println(msg);
