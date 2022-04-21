@@ -470,7 +470,7 @@ void handleRTC(char* param) {
   } else {
     // hasRAK12002
     unsigned int tokens, year, month, dayOfWeek, day, hour, minute, second;
-    tokens = sscanf(param, "%*s %u/%u/%u %u %u:%u:%u;", &year, &month, &dayOfWeek, &day, &hour, &minute, &second);
+    tokens = sscanf(param, "%*s %u/%u/%u %u %u:%u:%u;", &year, &month, &day, &dayOfWeek, &hour, &minute, &second);
     //Serial.printf("tokens: %d\n", tokens);
     if (tokens != 7) {
       // Check to see if it was parsed correctly
