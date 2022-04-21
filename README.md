@@ -21,9 +21,42 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 ![BLE](assets/BLE.png)
 
 ## COMMANDS
-It accepts so far 17 commands, via Serial and/or BLE:
+It accepts so far 18 commands, via Serial and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
+
+```c
+struct myCommand {
+  void (*ptr)(char *); // Function pointer
+  char name[12];
+  char help[48];
+};
+
+myCommand cmds[] = {
+  {handleHelp, "help", "Shows this help."},
+  {i2cScan, "i2c", "Scans the I2C bus."},
+#ifdef __RAKBLE_H__
+  {whoami, "whoami", "Gets the BLE broadcast name."},
+#endif
+  {sendPing, "ping", "Sends a ping."},
+  {handleP2P, "p2p", "Gets/sets the working frequency."},
+  {handleFreq, "fq", "Gets/sets the working frequency."},
+  {handleBW, "bw", "Gets/sets the working bandwidth."},
+  {handleSF, "sf", "Gets/sets the working spreading factor."},
+  {handleCR, "cr", "Gets/sets the working coding rate."},
+  {handleTX, "tx", "Gets/sets the working TX power."},
+  {handleLux, "lux", "Gets the ambient light."},
+  {handleTH, "th", "Gets the temperature and humidity."},
+  {handlePA, "pa", "Gets the atmospheric pressure."},
+  {handleBME, "bme", "Gets data (T/H/Pa) from a BME680."},
+  {handleALT, "alt", "Computes altitude."},
+  {handleMSL, "msl", "Gets/sets the MSL pressure."},
+  {sendLPP, "lpp", "Sends a Cayenne packet."},
+  {handleRTC, "rtc", "Gets/sets datetime."},
+};
+
+```
 
 ### System
+* `/help`: Displays the list of available commands.
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
 * `/whomai`: gets the BLE broadcast name. Useful when you have a few devices. You enter this command on Serial, and get the right name.
 
@@ -36,18 +69,19 @@ It accepts so far 17 commands, via Serial and/or BLE:
 * `/lux`: sends the Ambient Light level if you have a [RAK1903](https://store.rakwireless.com/products/rak1903-opt3001dnpr-ambient-light-sensor) (or a similar OPT3001 sensor), or a BH1750 (using [this library](https://github.com/claws/BH1750)) connected.
 
 ### RTC
-* `/rtc` displays the date and time if you have a DS3231M or RAK12002 RTC.
-* `/set yyyy-mm-dd hh:mn:ss` sets the date and time if you have a DS3231M (using the [DS3231M library](https://github.com/Zanduino/DS3231M)), or a [RAK12002](https://store.rakwireless.com/products/rtc-module-rak12002) RTC module, using the [Melopero_RV3028 library](https://github.com/melopero/Melopero_RV-3028_Arduino_Library).
+* `/rtc [yyyy-mm-dd hh:mn:ss]` displays and sets the date and time if you have a DS3231M (using the [DS3231M library](https://github.com/Zanduino/DS3231M)), or a [RAK12002](https://store.rakwireless.com/products/rtc-module-rak12002) RTC module, using the [Melopero_RV3028 library](https://github.com/melopero/Melopero_RV-3028_Arduino_Library).
 
 ### LoRa P2P
 * `/ping`: self-explanatory I believe...
-* `/> xxxxx`: sends a custom message. Notice the space between `/>` and `xxxxxx`.
+* `/lpp`: Send all available data points as a Cayenne LPP packet.
+(* `/> xxxxx`: sends a custom message. Notice the space between `/>` and `xxxxxx`.) <-- to be reimplemented
 * `/p2p`: displays the main P2P settings.
 * `/sf`: `/sf` or `/sf?` displays the current spreading factor used, whereas `/sf 5..12` sets it.
 * `/bw`: `/bw` or `/bw?` displays the current bandwidth used, in KHz, whereas `/bw 0..9` sets it.
 **Note:** There's a bug presently in the API, whereas BW values below 7, ie 125 KHz, are not recognized. Temporary fix until the engineers enables all 10 values, values between 0 and 7 are set to 125 KHz. Normal values are, 0 to 9: 7.810, 10.420, 15.630, 20.830, 31.250, 41.67, 62.50, 125, 250, 500.
 * `/cr`: `/cr` or `/cr?` displays the current coding rate used, whereas `/cr 5..8` sets it.
-* `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 come in -H and -L versions, so not all frequencies will actually work.
+* `/tx`: `/tx` or `/tx?` displays the current TX power used, whereas `/cr 5..22` sets it.
+* `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 and RAK3172 come in -H and -L versions, so not all frequencies will actually work.
 
 ![P2P settings](assets/P2Psettings.png)
 

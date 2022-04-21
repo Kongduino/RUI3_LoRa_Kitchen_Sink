@@ -133,7 +133,7 @@ void send_cb(void) {
   // NB: 65535 = wait for ONE packet, no timeout
 }
 
-void sendLPP() {
+void sendLPP(char * param) {
   lpp.reset();
   uint8_t channel = 1;
   if (hasTH) {
@@ -202,7 +202,7 @@ void sendLPP() {
   }
 }
 
-void sendPing() {
+void sendPing(char* param) {
   sprintf(msg, "PING #0x%04x", counter++);
   sendMsg(msg);
 }
@@ -322,7 +322,7 @@ void displayTime() {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    sprintf(msg, "rak12002 time: %02d:%02d:%02d UTC", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
+    sprintf(msg, "rak12002 time: %02d:%02d:%02d", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
     Serial.println(msg);
 #ifdef __RAKBLE_H__
     sendToBle(msg);
@@ -355,74 +355,6 @@ void displayTime() {
   }
 }
 
-void i2cScan() {
-  byte error, addr;
-  uint8_t nDevices, ix = 0;
-  Serial.println("\nI2C scan in progress...");
-  nDevices = 0;
-  Serial.print("   |   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .A   .B   .C   .D   .E   .F\n");
-  Serial.print("-------------------------------------------------------------------------------------\n0. |   .  ");
-  char memo[64];
-  char buff[32];
-  /*
-    if (hasOLED) {
-    oledFill(&oled, 0, 1);
-    oledSetContrast(&oled, 127);
-    oledWriteString(&oled, 0, -1, -1, (char *)"LoRa p2p", FONT_16x16, 0, 1);
-    oledWriteString(&oled, 0, 0, 2, (char *)"Scanning", FONT_8x8, 0, 1);
-    }
-    posY = 3;
-  */
-  int posX = 0;
-  displayScroll("Scanning");
-  memset(msg, 0, 128);
-  uint8_t px = 0;
-  for (addr = 1; addr < 128; addr++) {
-    Wire.beginTransmission(addr);
-    error = Wire.endTransmission();
-    if (error == 0) {
-      sprintf(msg + px, "0x%2x      ", addr);
-      Serial.print(msg + px);
-      // msg[ix++] = addr;
-      // I am not doing anything with the IDs for now.
-      if (nDevices > 0 && nDevices % 3 == 0) {
-        posY += 1;
-        posX = 0;
-        if (posY == 8) {
-          posY = 7;
-          for (uint8_t i = 0; i < 8; i++) {
-            oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
-            oledDumpBuffer(&oled, NULL);
-          }
-        }
-      }
-      nDevices++;
-      if (hasOLED) {
-        oledWriteString(&oled, 0, posX, posY, msg + px, FONT_8x8, 0, 1);
-        posX += 40;
-      }
-      px += 5;
-    } else {
-      Serial.print("  .  ");
-    }
-    if (addr > 0 && (addr + 1) % 16 == 0 && addr < 127) {
-      Serial.write('\n');
-      Serial.print(addr / 16 + 1);
-      Serial.print(". | ");
-    }
-  }
-  msg[px] = 0;
-  Serial.println("\n-------------------------------------------------------------------------------------");
-  Serial.println("I2C devices found: " + String(nDevices));
-#ifdef __RAKBLE_H__
-  sprintf(buff, "%d devices\n", nDevices);
-  sendToBle(buff);
-  sendToBle(msg);
-#endif
-  sprintf(buff, "devices: %d     ", nDevices);
-  displayScroll(buff);
-}
-
 void setup() {
   Serial.begin(115200, RAK_CUSTOM_MODE);
   // RAK_CUSTOM_MODE disables AT firmware parsing
@@ -444,6 +376,9 @@ void setup() {
   Serial.println("0!");
   Serial.println("RAKwireless LoRa P2P Kitchen Sink");
   Serial.println("------------------------------------------------------");
+  cmdCount = sizeof(cmds)/sizeof(myCommand);
+  Serial.printf("Available commands: %d\n", cmdCount);
+  handleHelp("/help");
   Wire.begin();
   Wire.setClock(400000);
   // Test for OLED

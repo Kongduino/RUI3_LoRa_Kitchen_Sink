@@ -51,3 +51,63 @@ void hexDump(uint8_t* buf, uint16_t len) {
   }
   Serial.print(F("   +------------------------------------------------+ +----------------+\n"));
 }
+
+void i2cScan(char* param) {
+  byte error, addr;
+  uint8_t nDevices, ix = 0;
+  Serial.println("\nI2C scan in progress...");
+  nDevices = 0;
+  Serial.print("   |   .0   .1   .2   .3   .4   .5   .6   .7   .8   .9   .A   .B   .C   .D   .E   .F\n");
+  Serial.print("-------------------------------------------------------------------------------------\n0. |   .  ");
+  char memo[64];
+  char buff[32];
+  int posX = 0;
+  displayScroll("Scanning");
+  memset(msg, 0, 128);
+  uint8_t px = 0;
+  for (addr = 1; addr < 128; addr++) {
+    Wire.beginTransmission(addr);
+    error = Wire.endTransmission();
+    if (error == 0) {
+      sprintf(msg + px, "0x%2x      ", addr);
+      // more spaces than required to be sure to erase "Scanning"
+      Serial.print(msg + px);
+      // msg[ix++] = addr;
+      // I am not doing anything with the IDs for now.
+      if (nDevices > 0 && nDevices % 3 == 0) {
+        posY += 1;
+        posX = 0;
+        if (posY == 8) {
+          posY = 7;
+          for (uint8_t i = 0; i < 8; i++) {
+            oledScrollBuffer(&oled, 0, 127, 2, 7, 1);
+            oledDumpBuffer(&oled, NULL);
+          }
+        }
+      }
+      nDevices++;
+      if (hasOLED) {
+        oledWriteString(&oled, 0, posX, posY, msg + px, FONT_8x8, 0, 1);
+        posX += 40;
+      }
+      px += 5;
+    } else {
+      Serial.print("  .  ");
+    }
+    if (addr > 0 && (addr + 1) % 16 == 0 && addr < 127) {
+      Serial.write('\n');
+      Serial.print(addr / 16 + 1);
+      Serial.print(". | ");
+    }
+  }
+  msg[px] = 0;
+  Serial.println("\n-------------------------------------------------------------------------------------");
+  Serial.println("I2C devices found: " + String(nDevices));
+#ifdef __RAKBLE_H__
+  sprintf(buff, "%d devices\n", nDevices);
+  sendToBle(buff);
+  sendToBle(msg);
+#endif
+  sprintf(buff, "devices: %d     ", nDevices);
+  displayScroll(buff);
+}
