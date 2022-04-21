@@ -37,7 +37,7 @@ myCommand cmds[] = {
   {whoami, "whoami", "Gets the BLE broadcast name."},
 #endif
   {sendPing, "ping", "Sends a ping."},
-  {handleP2P, "p2p", "Gets/sets the working frequency."},
+  {handleP2P, "p2p", "Shows the P2P settings."},
   {handleFreq, "fq", "Gets/sets the working frequency."},
   {handleBW, "bw", "Gets/sets the working bandwidth."},
   {handleSF, "sf", "Gets/sets the working spreading factor."},
