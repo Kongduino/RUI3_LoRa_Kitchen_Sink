@@ -376,7 +376,7 @@ void setup() {
   Serial.println("0!");
   Serial.println("RAKwireless LoRa P2P Kitchen Sink");
   Serial.println("------------------------------------------------------");
-  cmdCount = sizeof(cmds)/sizeof(myCommand);
+  cmdCount = sizeof(cmds) / sizeof(myCommand);
   handleHelp("/help");
   Wire.begin();
   Wire.setClock(400000);
@@ -591,10 +591,12 @@ void loop() {
   }
 #endif
   if (Serial.available()) {
-    Serial.println("\nIncoming:");
+    //Serial.println("\nIncoming:");
     // if (hasOLED) displayScroll("Serial in:");
     char str1[256];
-    uint8_t ix = 0;
+    str1[0] = '>';
+    str1[1] = ' ';
+    uint8_t ix = 2;
     while (Serial.available()) {
       char c = Serial.read();
       if (c > 31) str1[ix++] = c;
@@ -602,6 +604,6 @@ void loop() {
     str1[ix] = 0;
     Serial.println(str1);
     if (hasOLED) displayScroll(str1);
-    handleCommands(str1);
+    handleCommands(str1 + 2);
   }
 }
