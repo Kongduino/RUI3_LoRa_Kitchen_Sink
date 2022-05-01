@@ -23,7 +23,7 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 ## COMMANDS
 It accepts so far 22 commands, via Serial (USB Serial and Serial1, the latter can be disabled and enabled on the fly) and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
 
-![bbq10](assets/bbq10.png)
+![bbq10](assets/bbq10.png)<br />
 Incoming command from the BQ10 keyboard – for the moment blind: you have to look at the Serial monitor, or trust your Blackberry typing skills! :-)
 
 ```c
