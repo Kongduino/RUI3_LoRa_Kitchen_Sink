@@ -1,5 +1,5 @@
 void switchOLED(bool onOff) {
-  oledON = onOFF;
+  oledON = onOff;
   oledSetContrast(&oled, onOff ? 127 : 0);
   oledPower(&oled, onOff ? 1 : 0);
 }
@@ -121,4 +121,25 @@ void i2cScan(char* param) {
 #endif
   sprintf(buff, "devices: %d     ", nDevices);
   displayScroll(buff);
+}
+
+uint8_t backup0[1024];
+uint32_t lastKbdInput;
+bool isBBQing = false;
+
+void restoreBBQinput() {
+  switchOLED(true);
+  memcpy(backup0, ucBuffer, 1024);
+  oledFill(&oled, 0, 1);
+  oledWriteString(&oled, 0, 10, 0, "BBQ10", FONT_16x16, 0, 1);
+  oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 1);
+  oledWriteString(&oled, 0, -1, 2, bbqBuff, FONT_8x8, 0, 1);
+  lastKbdInput = millis();
+  isBBQing = true;
+}
+
+void restoreScreen() {
+  switchOLED(true);
+  oledDumpBuffer(&oled, backup0);
+  isBBQing = false;
 }
