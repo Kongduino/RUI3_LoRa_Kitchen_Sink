@@ -27,6 +27,16 @@ void handleBME(char *);
 void handleALT(char *);
 void handleMSL(char *);
 void handleRTC(char *);
+void handleAutoPing(char *);
+void handleAES(char *);
+void handleOCP(char *);
+void handlePongBack(char *);
+void handleSerial1(char *);
+
+bool needAES = false, needJSON = false, pongBack = false, autoPing = true;
+uint32_t apPeriod = 30000, lastPing;
+char pwd[32];
+uint8_t OCP_value = 0x38;
 
 int cmdCount = 0;
 struct myCommand {
@@ -56,7 +66,149 @@ myCommand cmds[] = {
   {handleMSL, "msl", "Gets/sets the MSL pressure."},
   {sendLPP, "lpp", "Sends a Cayenne packet."},
   {handleRTC, "rtc", "Gets/sets datetime."},
+  {handleAES, "aes", "AES-related commands."},
+  {handleOCP, "ocp", "Gets/sets OCP value."},
+  {handleAutoPing, "ap", "autoping 0/x seconds."},
+  {handlePongBack, "pb", "Gets/sets pong back."},
+  {handleSerial1, "s1", "Enables/disables Serial1."},
 };
+
+void handleOCP(char *param) {
+  uint16_t value;
+  int i = sscanf(param, "/ocp %d", &value);
+  if (i == 1) {
+    // 60 to 140
+    if (value < 60) value = 60;
+    else if (value > 140) value = 140;
+    value *= 10;
+    OCP_value = value / 25;
+    // SX126xWriteRegister(0x08e7, OCP_value);
+    sprintf(msg, "OCP = 0x%2x [%d]", OCP_value, (value / 10));
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  } else {
+    sprintf(msg, "OCP = 0x%2x [%d]", OCP_value, (OCP_value * 2.5));
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  }
+}
+
+void handlePongBack(char *param) {
+  uint8_t value;
+  int i = sscanf(param, "/pb %d", &value);
+  if (i == 1) {
+    // 0 or 1..n OFF or ON
+    sprintf(msg, "pb %s [%d]", (value == 0) ? "off" : "on", value);
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+    pongBack = (value > 0);
+  } else {
+    sprintf(msg, "pong %s", pongBack ? "on" : "off");
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  }
+}
+
+void handleSerial1(char *param) {
+  uint8_t value;
+  int i = sscanf(param, "/s1 %d", &value);
+  if (i == 1) {
+    // 0 or 1..n OFF or ON
+    sprintf(msg, "s1 %s [%d]", (value == 0) ? "off" : "on", value);
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+    needSerial1 = (value > 0);
+    if (needSerial1) Serial1.begin(115200, RAK_CUSTOM_MODE);
+    else Serial1.end();
+  } else {
+    sprintf(msg, "Serial1 %s", needSerial1 ? "on" : "off");
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  }
+}
+
+void handleAutoPing(char *param) {
+  uint8_t value;
+  int i = sscanf(param, "/ap %d", &value);
+  if (i == 1) {
+    // 0 OFF or xx ON
+    sprintf(msg, "ap %s [%d]", (value == 0) ? "off" : "on", value);
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+    autoPing = (value > 0);
+    apPeriod = 1000 * value;
+    lastPing = millis();
+  } else {
+    sprintf(msg, "ap %s [%d]", autoPing ? "on" : "off", (apPeriod / 1000));
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  }
+}
+
+void handleAES(char *param) {
+  int i = sscanf(param, "/aes off");
+  if (i == 0) {
+    // OFF
+    sprintf(msg, "aes OFF");
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+    needAES = false;
+    return;
+  }
+  i = sscanf(param, "/aes %s", msg);
+  if (i > -1) {
+    // ON with pwd
+    i = strlen(msg);
+    if (i != 16) {
+      // AES128 pwd len = 16 bytes
+      // Later we will accept hex string 010203 etc of 32 bytes
+      sprintf(msg, "wrong aes pwd length!");
+      Serial.println(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) displayScroll(msg);
+      needAES = false;
+      return;
+    }
+    memcpy(pwd, msg, 16);
+    sprintf(msg, "aes ON!");
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+    needAES = true;
+    return;
+  }
+}
 
 void handleHelp(char *param) {
   Serial.printf("Available commands: %d\n", cmdCount);
@@ -511,4 +663,5 @@ void handleCommands(char *str1) {
   int i = sscanf(str1, "/%s", kwd);
   if (i > 0) evalCmd(kwd, str1);
   else handleHelp("");
+  oledLastOn = millis();
 }

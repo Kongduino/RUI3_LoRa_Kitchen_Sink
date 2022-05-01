@@ -52,8 +52,10 @@ void hexDump(uint8_t* buf, uint16_t len) {
   Serial.print(F("   +------------------------------------------------+ +----------------+\n"));
 }
 
+uint8_t myBus[128];
 void i2cScan(char* param) {
   byte error, addr;
+  memset(myBus, 0, 128);
   uint8_t nDevices, ix = 0;
   Serial.println("\nI2C scan in progress...");
   nDevices = 0;
@@ -71,9 +73,12 @@ void i2cScan(char* param) {
     if (error == 0) {
       sprintf(msg + px, "0x%2x      ", addr);
       // more spaces than required to be sure to erase "Scanning"
+      msg[px + 5] = 0;
       Serial.print(msg + px);
-      // msg[ix++] = addr;
-      // I am not doing anything with the IDs for now.
+      msg[px + 5] = ' ';
+      // save the addr in the table
+      // makes it easier to detect available devices during setup()
+      myBus[addr] = addr;
       if (nDevices > 0 && nDevices % 3 == 0) {
         posY += 1;
         posX = 0;

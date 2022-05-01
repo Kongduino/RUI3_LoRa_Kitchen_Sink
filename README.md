@@ -21,7 +21,7 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 ![BLE](assets/BLE.png)
 
 ## COMMANDS
-It accepts so far 18 commands, via Serial and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
+It accepts so far 22 commands, via Serial (USB Serial and Serial1, the latter can be disabled and enabled on the fly) and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
 
 ```c
 struct myCommand {
@@ -51,14 +51,21 @@ myCommand cmds[] = {
   {handleMSL, "msl", "Gets/sets the MSL pressure."},
   {sendLPP, "lpp", "Sends a Cayenne packet."},
   {handleRTC, "rtc", "Gets/sets datetime."},
+  {handleAES, "aes", "AES-related commands."},
+  {handleOCP, "ocp", "Gets/sets OCP value."},
+  {handleAutoPing, "ap", "autoping 0/x seconds."},
+  {handlePongBack, "pb", "Gets/sets pong back."},
+  {handleSerial1, "s1", "Enables/disables Serial1."},
 };
 
 ```
+![Help](assets/help.png)
 
 ### System
 * `/help`: Displays the list of available commands.
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
 * `/whomai`: gets the BLE broadcast name. Useful when you have a few devices. You enter this command on Serial, and get the right name.
+* `/s1`: `/s1` or `/s1?` displays the current Seria1l status, whereas `/s1 0..1` sets it, `0` = off, `1` = on.
 
 ### Environment
 * `/th`: sends the temperature and humidity if you have either a [RAK1901](https://store.rakwireless.com/products/rak1901-shtc3-temperature-humidity-sensor), an [HTU21D](https://www.mikroe.com/htu21d-click), or similar, or a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor), or similar bme680 sensor, connected.
@@ -82,9 +89,11 @@ myCommand cmds[] = {
 * `/cr`: `/cr` or `/cr?` displays the current coding rate used, whereas `/cr 5..8` sets it.
 * `/tx`: `/tx` or `/tx?` displays the current TX power used, whereas `/cr 5..22` sets it.
 * `/fq`: `/fq` or `/fq?` displays the current frequency used, whereas `/fq 150.0 ,, 960..` sets it. Note that RAK4631 and RAK3172 come in -H and -L versions, so not all frequencies will actually work.
+* `/ocp`: `/ocp` or `/ocp?` displays the current Over-Current Protection value, whereas `/ocp 60..140` sets it.
+* `/ap`: `/ap` or `/ap?` displays the current autoping status, whereas `/ap 0..n` sets it, `0` = off, `n` = minutes.
+* `/pb`: `/pb` or `/pb?` displays the current pong back status, whereas `/pb 0..1` sets it, `0` = off, `1` = on.
 
 ![P2P settings](assets/P2Psettings.png)
-
 
 **Yes, the sketch recognizes the sensors on its own.**
 

@@ -2,8 +2,8 @@
 #include "rak1902.h"
 #include "rak1903.h"
 // #include "unishox2.h"
-#include "ClosedCube_BME680.h"
-#include <ss_oled.h>
+#include <ClosedCube_BME680.h> // http://librarymanager/All#ClosedCube_BME680
+#include <ss_oled.h> // http://librarymanager/All#ss_oled By Larry Bank
 /*
    PATCHES TO BE DONE IN ORDER TO BE ABLE TO COMPILE!
   --> ss_oled.h
@@ -17,12 +17,27 @@
   [...]
   #if defined(TEENSYDUINO) || defined(ARDUINO_ARCH_RP2040) || defined(__AVR__) || defined(NRF52)
   || defined (ARDUINO_ARCH_NRF52840) || defined(ARDUINO_ARCH_NRF52) || defined(ARDUINO_ARCH_SAM) || defined(__RUI_TOP_H__)
+
+  NOTE: These patches are not needed any longer – Leaving this warning just in case...
 */
-#include "HTU21D.h"
-#include <CayenneLPP.h>
-#include <DS3231M.h> // Include the DS3231M RTC library
-#include "Melopero_RV3028.h" //http://librarymanager/All#Melopero_RV3028
-#include <BH1750.h> // https://github.com/claws/BH1750
+#include <BBQ10Keyboard.h> // http://librarymanager/All#BBQ10Keyboard
+#include <HTU21D.h> // http://librarymanager/All#HTU21D Library by Daniel Wiese
+#include <CayenneLPP.h> // http://librarymanager/All#CayenneLPP
+#include <DS3231M.h> // // http://librarymanager/All#DS3231M
+#include <Melopero_RV3028.h> // http://librarymanager/All#Melopero_RV3028
+#include <BH1750.h> // https://github.com/claws/BH1750 or http://librarymanager/All#BH1750 by CLaws
+
+BBQ10Keyboard keyboard;
+// Stuff for the beyboard
+// See https://github.com/solderparty/bbq10kbd_i2c_sw
+bool SYM = false; // Is the SYM key being held down
+#define _SYM_KEY 19 // Key code
+#define CFG_REPORT_MODS 0b01000000
+// https://github.com/solderparty/bbq10kbd_i2c_sw#the-configuration-register-reg_cfg--0x02
+#define _REG_CFG 0x02
+#define _REG_KEY 0x04
+char bbqBuff[32] = {0};
+uint8_t bbqIndex = 0;
 
 BH1750 bh1750;
 Melopero_RV3028 rak12002;
@@ -36,9 +51,12 @@ rak1901 th_sensor;
 rak1902 p_sensor;
 rak1903 rak1903_lux;
 ClosedCube_BME680 bme680;
+
+int rc;
+SSOLED oled;
+// Stuff for the OLED
 #define SDA_PIN WB_I2C1_SDA
 #define SCL_PIN WB_I2C1_SCL
-
 #define RESET_PIN -1
 #define FLIPPED 0
 #define INVERTED 0
@@ -46,20 +64,22 @@ ClosedCube_BME680 bme680;
 #define HARDWARE_I2C 1
 #define WIDTH 128
 #define HEIGHT 64
-int rc;
-SSOLED oled;
-
 static uint8_t ucBuffer[1024];
-bool hasOLED = true, hasTH = false, hasPA = false, has1903 = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false, hasRAK12002 = false, hasBH1750 = false;
-float temp, humid, HPa, Lux;
+double oledLastOn, OLEDdelay = 30000;
+
+bool hasOLED = true; // Doesn't mean you have an OLED – Check and verify!
+// It means that IF an OLED is detected, it will be used.
+// OTOH if you set it to false, even if it is detected, it won't be used.
+bool hasTH = false, hasPA = false, has1903 = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false;
+bool hasRAK12002 = false, hasBH1750 = false, hasBBQ10 = false, oledON;
+bool needSerial1 = true; // Set to false if you want to disable Serial1
+float temp, humid, HPa, Lux, MSL = 1013.5;
 long startTime;
 // LoRa SETUP
 // The LoRa chip come pre-wired: all you need to do is define the parameters:
 // frequency, SF, BW, CR, Preamble Length and TX power
-double myFreq = 868000000;
-float MSL = 1013.5;
+double myFreq = 868125000;
 uint16_t counter = 0, sf = 12, bw = 125, cr = 0, preamble = 8, txPower = 22;
-char msg[128];
 uint32_t myBWs[10] = {125, 125, 125, 125, 125, 125, 125, 125, 250, 500};
 /*
   There's a bug presently in the API, whereas BW values below 7/125 KHz are not recognized.
@@ -67,6 +87,7 @@ uint32_t myBWs[10] = {125, 125, 125, 125, 125, 125, 125, 125, 250, 500};
   SignalBandwidth   0     1     2      3      4      5      6    7   8    9
   BW_L [kHz]      7.810 10.420 15.630 20.830 31.250 41.67 62.50 125 250  500
 */
+char msg[128]; // general-use buffer
 
 #include "Utilities.h"
 #include "Commands.h"
@@ -85,44 +106,35 @@ uint32_t myBWs[10] = {125, 125, 125, 125, 125, 125, 125, 125, 250, 500};
 */
 void recv_cb(rui_lora_p2p_recv_t data) {
   // RX callback
-  if (data.BufferSize == 0) {
+  api.lorawan.precv(0);
+  uint16_t ln = data.BufferSize;
+  if (ln == 0) {
     // This should not happen. But, you know...
     // will not != should not
     // Serial.println("Empty buffer.");
+    Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
     return;
   }
-  sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", data.BufferSize, data.Rssi, data.Snr);
+  sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", ln, data.Rssi, data.Snr);
   Serial.print(msg);
-  // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
-  sprintf(msg, "[%d] RSSI %d SNR %d\n", data.BufferSize, data.Rssi, data.Snr);
-  if (hasOLED) {
-    sprintf(msg, "LoRa msg: %d", data.BufferSize);
-    displayScroll(msg);
-    sprintf(msg, "RSSI: %d", data.Rssi);
-    displayScroll(msg);
-    sprintf(msg, "SNR: %d", data.Snr);
-    displayScroll(msg);
-    if (data.BufferSize < 17) displayScroll((char*)data.Buffer);
-    else {
-      memset(msg, 0, 128);
-      memcpy(msg, (char*)data.Buffer, data.BufferSize);
-      for (uint8_t i = 0; i < data.BufferSize; i += 16) {
-        char c = msg[i + 16];
-        msg[i + 16] = 0;
-        displayScroll(msg + i);
-        msg[i + 16] = c;
-      }
-    }
-  }
+  hexDump(data.Buffer, ln);
+  sprintf(msg, "{\"RSSI\":%d,\"SNR\":%d,\"msg\":\"%s\"}\n", data.Rssi, data.Snr, data.Buffer);
+  if (needSerial1) Serial1.print(msg);
 #ifdef __RAKBLE_H__
-  sendToBle(msg);
-#endif
-  hexDump(data.Buffer, data.BufferSize);
   Serial.println("Sending to BLE");
+  // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
+  sprintf(msg, "[%d] RSSI %d SNR %d\n", ln, data.Rssi, data.Snr);
+  sendToBle(msg);
   sprintf(msg, "%s\n", (char*)data.Buffer);
-#ifdef __RAKBLE_H__
   sendToBle(msg);
 #endif
+  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  if (pongBack) {
+    delay(1000);
+    sprintf(msg, "rcvd at %d %d", data.Rssi, data.Snr);
+    // Serial.println(msg);
+    sendMsg(msg);
+  }
 }
 
 void send_cb(void) {
@@ -187,12 +199,15 @@ void sendLPP(char * param) {
   }
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
-  uint8_t lBuff[48];
-  memcpy(lBuff, lpp.getBuffer(), ln);
-  bool rslt = api.lorawan.psend(ln, lBuff);
+  uint8_t lBuff[54];
+  memcpy(lBuff + 3, lpp.getBuffer(), ln);
+  lBuff[0] = 'l';
+  lBuff[1] = 'p';
+  lBuff[2] = 'p';
+  bool rslt = api.lorawan.psend(ln + 3, lBuff);
   sprintf(msg, "Sending LPP payload: %s\n", rslt ? "Success" : "Fail");
   Serial.print(msg);
-  hexDump(lBuff, ln);
+  hexDump(lBuff, ln + 3);
 #ifdef __RAKBLE_H__
   sendToBle(msg);
 #endif
@@ -204,6 +219,7 @@ void sendLPP(char * param) {
 
 void sendPing(char* param) {
   sprintf(msg, "PING #0x%04x", counter++);
+  if (needSerial1) Serial1.println(msg);
   sendMsg(msg);
 }
 
@@ -234,8 +250,12 @@ void sendLux() {
   if (has1903 && hasBH1750) {
     rak1903_lux.update();
     Lux = rak1903_lux.lux();
-    float Lux0 = bh1750.readLightLevel();
-    sprintf(msg, "lux: %.2f %.2f", Lux0, Lux);
+    if (bh1750.measurementReady(true)) {
+      float Lux0 = bh1750.readLightLevel();
+      sprintf(msg, "lux: %.2f %.2f", Lux0, Lux);
+    } else {
+      sprintf(msg, "lux: NaN %.2f", Lux);
+    }
     sendMsg(msg);
     return;
   } else {
@@ -246,8 +266,12 @@ void sendLux() {
       sendMsg(msg);
     }
     if (hasBH1750) {
-      Lux = bh1750.readLightLevel();
-      sprintf(msg, "bh1750: %.2f", Lux);
+      if (bh1750.measurementReady(true)) {
+        Lux = bh1750.readLightLevel();
+        sprintf(msg, "bh1750: %.2f", Lux);
+      } else {
+        sprintf(msg, "bh1750 not ready");
+      }
       sendMsg(msg);
     }
   }
@@ -357,6 +381,7 @@ void displayTime() {
 
 void setup() {
   Serial.begin(115200, RAK_CUSTOM_MODE);
+  if (needSerial1) Serial1.begin(115200, RAK_CUSTOM_MODE);
   // RAK_CUSTOM_MODE disables AT firmware parsing
   time_t timeout = millis();
   while (!Serial) {
@@ -376,15 +401,15 @@ void setup() {
   Serial.println("0!");
   Serial.println("RAKwireless LoRa P2P Kitchen Sink");
   Serial.println("------------------------------------------------------");
+  if (needSerial1) Serial1.println("Kitchen Sink");
   cmdCount = sizeof(cmds) / sizeof(myCommand);
   handleHelp("/help");
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(100000);
+  i2cScan("");
   // Test for OLED
-  Wire.beginTransmission(0x3c);
-  delay(100);
-  byte error = Wire.endTransmission();
-  if (error == 0) {
+  byte error = myBus[0x3c];
+  if (error != 0) {
     Serial.println("OLED present");
     if (hasOLED) {
       // the user wants OLED display
@@ -396,6 +421,8 @@ void setup() {
         oledFill(&oled, 0, 1);
         oledSetContrast(&oled, 127);
         oledWriteString(&oled, 0, -1, -1, "LoRa p2p", FONT_16x16, 0, 1);
+        if (hasOLED) oledLastOn = millis();
+        oledON = true;
       } else hasOLED = false;
     } else {
       Serial.println("But you specified you didn't want OLED display!");
@@ -403,10 +430,26 @@ void setup() {
   } else hasOLED = false;
   // Even if the user wanted it – since it ain't there, we set it to false.
 
+  // Test for BBQ10 kbd
+  error = myBus[0x1f];
+  if (error != 0) {
+    Serial.println("BBQ10 Keyboard present!");
+    hasBBQ10 = true;
+    if (hasOLED) displayScroll("* BBQ10 kbd");
+    keyboard.begin();
+    keyboard.setBacklight(0.5f);
+    keyboard.setBacklight2(1.0f);
+    uint8_t cfg = keyboard.readRegister8(_REG_CFG);
+    Serial.printf(" . cfg: %08x\n", cfg);
+    // Report SYM, ALT, KEYCAPS etc
+    cfg |= CFG_REPORT_MODS;
+    Serial.printf(" . cfg: %08x\n", cfg);
+    keyboard.writeRegister(_REG_CFG, cfg);
+  }
+
   // Test for rtc
-  Wire.beginTransmission(0x52);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x52];
+  if (error != 0) {
     Serial.println("RAK12002 RTC present!");
     hasRAK12002 = true;
     rak12002.initI2C(); // First initialize and create the rtc device
@@ -417,9 +460,8 @@ void setup() {
   }
 
   if (!hasRAK12002) {
-    Wire.beginTransmission(0x68);
-    error = Wire.endTransmission();
-    if (error == 0) {
+    error = myBus[0x68];
+    if (error != 0) {
       Serial.println("DS3231M RTC present!");
       hasDS3231M = DS3231M.begin();
       Serial.printf("DS3231M init %s\n", hasDS3231M ? "success" : "fail");
@@ -428,9 +470,8 @@ void setup() {
   }
 
   // Test for rak1901
-  Wire.beginTransmission(0x70);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x70];
+  if (error != 0) {
     Serial.println("Temperature & Humidity Sensor present!");
     hasTH = th_sensor.init();
     Serial.printf("RAK1901 init %s\n", hasTH ? "success" : "fail");
@@ -441,9 +482,8 @@ void setup() {
   }
 
   // Test for rak1902
-  Wire.beginTransmission(0x5C);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x5C];
+  if (error != 0) {
     Serial.println("Pressure Sensor present!");
     hasPA = p_sensor.init();
     Serial.printf("RAK1902 init %s\n", hasPA ? "success" : "fail");
@@ -452,9 +492,8 @@ void setup() {
   }
 
   // Test for rak1903
-  Wire.beginTransmission(0x44);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x44];
+  if (error != 0) {
     Serial.println("RAK1903 Light Sensor present!");
     has1903 = rak1903_lux.init();
     Serial.printf("RAK1903 init %s\n", has1903 ? "success" : "fail");
@@ -463,21 +502,21 @@ void setup() {
   }
 
   // Test for BH1750
-  Wire.beginTransmission(0x23);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x23];
+  if (error != 0) {
     Serial.println("hasBH1750 Light Sensor present!");
     hasBH1750 = true;
-    bh1750.begin();
-    Lux = bh1750.readLightLevel();
-    Serial.printf("BH1750 init: %d\n", Lux);
-    if (hasOLED) displayScroll("* bh1750");
+    bh1750.begin(BH1750::ONE_TIME_HIGH_RES_MODE);
+    if (bh1750.measurementReady(true)) {
+      Lux = bh1750.readLightLevel();
+      Serial.printf("BH1750 init: %d\n", Lux);
+      if (hasOLED) displayScroll("* bh1750");
+    }
   }
 
   // Test for rak1906
-  Wire.beginTransmission(0x76);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x76];
+  if (error != 0) {
     Serial.println("RAK1906 Light Sensor present!");
     if (hasOLED) displayScroll("* rak1906");
     bme680.init(0x76); // I2C address: 0x76 or 0x77
@@ -495,9 +534,8 @@ void setup() {
   }
 
   // Test for HTU21D
-  Wire.beginTransmission(0x40);
-  error = Wire.endTransmission();
-  if (error == 0) {
+  error = myBus[0x40];
+  if (error != 0) {
     Serial.println("HTU21D Temperature/Humidity present!");
     if (hasOLED) displayScroll("* HTU21D");
     myHTU21D.begin();
@@ -531,7 +569,8 @@ void setup() {
   Serial.printf("Set P2P coding rate to 4/%d: %s\n", (cr + 5), api.lorawan.pcr.set(cr) ? "Success" : "Fail");
   Serial.printf("Set P2P preamble length to %d: %s\n", preamble, api.lorawan.ppl.set(preamble) ? "Success" : "Fail");
   Serial.printf("Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(txPower) ? "Success" : "Fail");
-
+  // SX126xWriteRegister(0x08e7, OCP_value);
+  Serial.printf("Set OCP to 0x%2x [%d]\n", OCP_value, (OCP_value * 2.5));
   // LoRa callbacks
   api.lorawan.registerPRecvCallback(recv_cb);
   api.lorawan.registerPSendCallback(send_cb);
@@ -565,11 +604,61 @@ void setup() {
   // YOU are in charge of sending, either via Serial or BLE.
   Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   startTime = millis();
+  if (hasOLED) oledLastOn = millis();
+  if (autoPing) lastPing = millis();
 }
 
 void loop() {
+  if (hasBBQ10) {
+    // If you don't have an OLED it's gonna be fun...
+    const int keyCount = keyboard.keyCount();
+    if (keyCount > 0) {
+      const BBQ10Keyboard::KeyEvent key = keyboard.keyEvent();
+      if (key.state == BBQ10Keyboard::StateLongPress) {
+        if (key.key == _SYM_KEY) SYM = true;
+      } else if (key.state == BBQ10Keyboard::StateRelease) {
+        if (key.key == _SYM_KEY) {
+          SYM = false;
+        } else if (key.key > 31) {
+          if (bbqIndex < 31) bbqBuff[bbqIndex++] = key.key;
+        } else if (key.key == 8) {
+          if (SYM) {
+            Serial.println(" > Full erase!");
+            memset(bbqBuff, 0, 32);
+            bbqIndex = 0;
+          } else {
+            if (bbqIndex > 0) bbqBuff[bbqIndex--] = 0;
+            else bbqBuff[bbqIndex] = 0;
+          }
+        } else if (key.key == 10) {
+          handleCommands(bbqBuff);
+          memset(bbqBuff, 0, 32);
+          bbqIndex = 0;
+          return;
+        }
+        Serial.printf("BBQ10 Buffer [%d]: %s\n", bbqIndex, bbqBuff);
+      }
+    }
+  }
+  if (autoPing) {
+    uint32_t t0 = millis();
+    if (t0 - lastPing > apPeriod) {
+      Serial.printf("autoping at %d / %d\n", (t0 - lastPing), apPeriod);
+#ifdef __RAKBLE_H__
+      sendToBle("autoping");
+#endif
+      // if (hasOLED) displayScroll("autoping");
+      sendPing("");
+      lastPing = millis();
+    }
+  }
 #ifdef __RAKBLE_H__
   if (api.ble.uart.available()) {
+    if (hasOLED && !oledON) {
+      oledON = true;
+      oledSetContrast(&oled, 127);
+      oledLastOn = millis();
+    }
     // store the incoming string into a buffer
     Serial.println("\nBLE in:");
     // if (hasOLED) displayScroll("BLE in:");
@@ -591,6 +680,11 @@ void loop() {
   }
 #endif
   if (Serial.available()) {
+    if (hasOLED && !oledON) {
+      oledON = true;
+      oledSetContrast(&oled, 127);
+      oledLastOn = millis();
+    }
     //Serial.println("\nIncoming:");
     // if (hasOLED) displayScroll("Serial in:");
     char str1[256];
@@ -605,5 +699,36 @@ void loop() {
     Serial.println(str1);
     if (hasOLED) displayScroll(str1);
     handleCommands(str1 + 2);
+  }
+
+  if (needSerial1) {
+    if (Serial1.available()) {
+      if (hasOLED && !oledON) {
+        oledON = true;
+        oledSetContrast(&oled, 127);
+        oledLastOn = millis();
+      }
+      char str1[256];
+      str1[0] = '>';
+      str1[1] = ' ';
+      uint8_t ix = 2;
+      while (Serial1.available()) {
+        char c = Serial1.read();
+        delay(10);
+        if (c > 31) str1[ix++] = c;
+      }
+      str1[ix] = 0;
+      Serial.println("From Serial1");
+      Serial.println(str1);
+      if (hasOLED) displayScroll(str1);
+      handleCommands(str1 + 2);
+    }
+  }
+  if (hasOLED && oledON) {
+    double t0 = millis();
+    if (t0 - oledLastOn > OLEDdelay) {
+      oledON = false;
+      oledSetContrast(&oled, 0);
+    }
   }
 }
