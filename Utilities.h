@@ -1,3 +1,9 @@
+void switchOLED(bool onOff) {
+  oledON = onOFF;
+  oledSetContrast(&oled, onOff ? 127 : 0);
+  oledPower(&oled, onOff ? 1 : 0);
+}
+
 #ifdef __RAKBLE_H__
 void sendToBle(char *msgToSend) {
   api.ble.uart.write((uint8_t*)msgToSend, strlen(msgToSend));

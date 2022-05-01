@@ -416,10 +416,10 @@ void setup() {
       uint8_t uc[8];
       rc = oledInit(&oled, OLED_128x64, 0x3c, FLIPPED, INVERTED, HARDWARE_I2C, SDA_PIN, SCL_PIN, RESET_PIN, 400000L);
       if (rc != OLED_NOT_FOUND) {
+        switchOLED(true);
         oledSetBackBuffer(&oled, ucBuffer);
         oledSetTextWrap(&oled, 1);
         oledFill(&oled, 0, 1);
-        oledSetContrast(&oled, 127);
         oledWriteString(&oled, 0, -1, -1, "LoRa p2p", FONT_16x16, 0, 1);
         if (hasOLED) oledLastOn = millis();
         oledON = true;
@@ -570,7 +570,7 @@ void setup() {
   Serial.printf("Set P2P preamble length to %d: %s\n", preamble, api.lorawan.ppl.set(preamble) ? "Success" : "Fail");
   Serial.printf("Set P2P TX power to %d: %s\n", txPower, api.lorawan.ptp.set(txPower) ? "Success" : "Fail");
   // SX126xWriteRegister(0x08e7, OCP_value);
-  Serial.printf("Set OCP to 0x%2x [%d]\n", OCP_value, (OCP_value * 2.5));
+  // Serial.printf("Set OCP to 0x%2x [%d]\n", OCP_value, (OCP_value * 2.5));
   // LoRa callbacks
   api.lorawan.registerPRecvCallback(recv_cb);
   api.lorawan.registerPSendCallback(send_cb);
@@ -616,9 +616,11 @@ void loop() {
       const BBQ10Keyboard::KeyEvent key = keyboard.keyEvent();
       if (key.state == BBQ10Keyboard::StateLongPress) {
         if (key.key == _SYM_KEY) SYM = true;
+        return;
       } else if (key.state == BBQ10Keyboard::StateRelease) {
         if (key.key == _SYM_KEY) {
           SYM = false;
+          return;
         } else if (key.key > 31) {
           if (bbqIndex < 31) bbqBuff[bbqIndex++] = key.key;
         } else if (key.key == 8) {
@@ -636,7 +638,7 @@ void loop() {
           bbqIndex = 0;
           return;
         }
-        Serial.printf("BBQ10 Buffer [%d]: %s\n", bbqIndex, bbqBuff);
+        if(key.key>31) Serial.printf("BBQ10 Buffer [%d]: %s\n", bbqIndex, bbqBuff);
       }
     }
   }
@@ -656,7 +658,7 @@ void loop() {
   if (api.ble.uart.available()) {
     if (hasOLED && !oledON) {
       oledON = true;
-      oledSetContrast(&oled, 127);
+      switchOLED(true);
       oledLastOn = millis();
     }
     // store the incoming string into a buffer
@@ -682,7 +684,7 @@ void loop() {
   if (Serial.available()) {
     if (hasOLED && !oledON) {
       oledON = true;
-      oledSetContrast(&oled, 127);
+      switchOLED(true);
       oledLastOn = millis();
     }
     //Serial.println("\nIncoming:");
@@ -705,7 +707,7 @@ void loop() {
     if (Serial1.available()) {
       if (hasOLED && !oledON) {
         oledON = true;
-        oledSetContrast(&oled, 127);
+        switchOLED(true);
         oledLastOn = millis();
       }
       char str1[256];
@@ -726,9 +728,6 @@ void loop() {
   }
   if (hasOLED && oledON) {
     double t0 = millis();
-    if (t0 - oledLastOn > OLEDdelay) {
-      oledON = false;
-      oledSetContrast(&oled, 0);
-    }
+    if (t0 - oledLastOn > OLEDdelay) switchOLED(false);
   }
 }
