@@ -632,6 +632,7 @@ void setup() {
 void loop() {
   if (hasBBQ10) {
     // If you don't have an OLED it's gonna be fun...
+    // Watch the Serial Monitor!
     const int keyCount = keyboard.keyCount();
     if (keyCount == 0 && isBBQing) {
       uint32_t t0 = millis();
@@ -641,8 +642,8 @@ void loop() {
       }
     } else if (keyCount > 0) {
       lastKbdInput = millis();
-      if (!isBBQing) restoreBBQinput();
-      oledLastOn = millis();
+      if (!isBBQing && hasOLED) restoreBBQinput();
+      if (hasOLED) oledLastOn = millis();
       const BBQ10Keyboard::KeyEvent key = keyboard.keyEvent();
       if (key.state == BBQ10Keyboard::StateLongPress) {
         if (key.key == _SYM_KEY) SYM = true;
@@ -655,31 +656,39 @@ void loop() {
           if (bbqIndex < bbqLimit) bbqBuff[bbqIndex++] = key.key;
         } else if (key.key == 8) {
           if (SYM) {
-            Serial.println(" > Full erase!");
+            // SYM+Backspace = erase everything
+            // Serial.println(" > Full erase!");
             memset(bbqBuff, 0, bbqLimit);
             bbqIndex = 0;
           } else {
+            // Erase one char, if any left
             bbqBuff[bbqIndex] = 0; // Not really necessary but belt and suspenders...
             if (bbqIndex > 0) bbqIndex -= 1;
             bbqBuff[bbqIndex] = 0;
           }
-          oledFill(&oled, 0, 0);
-          oledWriteString(&oled, 0, 10, 0, "BBQ10", FONT_16x16, 0, 0);
-          oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 0);
-          if (bbqIndex > 0) oledWriteString(&oled, 0, 8, 2, bbqBuff, FONT_8x8, 0, 0);
-          oledDumpBuffer(&oled, ucBuffer);
+          if (hasOLED) {
+            // easiest way to redraw after erase is to draw off-screen. then dump the buffer
+            oledFill(&oled, 0, 0);
+            oledWriteString(&oled, 0, 10, 0, "BBQ10", FONT_16x16, 0, 0);
+            oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 0);
+            if (bbqIndex > 0) oledWriteString(&oled, 0, 8, 2, bbqBuff, FONT_8x8, 0, 0);
+            oledDumpBuffer(&oled, ucBuffer);
+          }
         } else if (key.key == 10) {
-          restoreScreen();
+          // enter = let's go!
+          restoreScreen(); // back to what it was
           handleCommands(bbqBuff);
           memset(bbqBuff, 0, bbqLimit);
           bbqIndex = 0;
           return;
         }
         if (key.key > 31) {
-          for (uint8_t x = 0; x < 128; x++) ucBuffer[x + 256] = 0;
-          oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 0);
-          oledWriteString(&oled, 0, 8, 2, bbqBuff, FONT_8x8, 0, 0);
-          oledDumpBuffer(&oled, ucBuffer);
+          if (hasOLED) {
+            for (uint8_t x = 0; x < 128; x++) ucBuffer[x + 256] = 0;
+            oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 0);
+            oledWriteString(&oled, 0, 8, 2, bbqBuff, FONT_8x8, 0, 0);
+            oledDumpBuffer(&oled, ucBuffer);
+          }
           Serial.printf("BBQ10 Buffer [%d]: %s\n", bbqIndex, bbqBuff);
         }
       }

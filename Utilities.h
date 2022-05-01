@@ -128,18 +128,25 @@ uint32_t lastKbdInput;
 bool isBBQing = false;
 
 void restoreBBQinput() {
-  switchOLED(true);
-  memcpy(backup0, ucBuffer, 1024);
-  oledFill(&oled, 0, 1);
-  oledWriteString(&oled, 0, 10, 0, "BBQ10", FONT_16x16, 0, 1);
-  oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 1);
-  oledWriteString(&oled, 0, -1, 2, bbqBuff, FONT_8x8, 0, 1);
+  if (hasOLED) {
+    switchOLED(true);
+    memcpy(backup0, ucBuffer, 1024);
+    // save the current screen
+    oledFill(&oled, 0, 1); // erase everything
+    oledWriteString(&oled, 0, 10, 0, "BBQ10", FONT_16x16, 0, 1);
+    oledWriteString(&oled, 0, 0, 2, ">", FONT_8x8, 0, 1);
+    oledWriteString(&oled, 0, -1, 2, bbqBuff, FONT_8x8, 0, 1);
+    // -1 means current position
+  }
   lastKbdInput = millis();
   isBBQing = true;
 }
 
 void restoreScreen() {
-  switchOLED(true);
-  oledDumpBuffer(&oled, backup0);
+  if (hasOLED) {
+    switchOLED(true); // in case if went off in between
+    memcpy(ucBuffer, backup0, 1024); // restore screen
+    oledDumpBuffer(&oled, ucBuffer);
+  }
   isBBQing = false;
 }
