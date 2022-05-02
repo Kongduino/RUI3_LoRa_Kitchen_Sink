@@ -150,6 +150,13 @@ void send_cb(void) {
 void sendLPP(char * param) {
   lpp.reset();
   uint8_t channel = 1;
+  if (hasDS3231M) {
+    if (hasOLED) displayScroll(" * ds3231m");
+    lpp.addUnixTime(channel++, DS3231M.unixtime());
+  } else if (hasRAK12002) {
+    if (hasOLED) displayScroll(" * rak12002");
+    lpp.addUnixTime(channel++, rak12002.getUnixTime());
+  }
   if (hasTH) {
     if (hasOLED) displayScroll(" * rak1901");
     th_sensor.update();
