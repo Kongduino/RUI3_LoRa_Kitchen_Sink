@@ -21,7 +21,7 @@ The command to upload the firmware looks like this. The path to the Arduino temp
 ![BLE](assets/BLE.png)
 
 ## COMMANDS
-It accepts so far 23 commands, via Serial (USB Serial and Serial1, the latter can be disabled and enabled on the fly) and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
+It accepts so far 24 commands, via Serial (USB Serial and Serial1, the latter can be disabled and enabled on the fly) and/or BLE. The command system has been rewritten from scratch, and is now easily extendable. An array of a struct called `myCommand`, which holds the name of the command, a help message, and a pointer to a function, is created on the fly at boot time. User input is compared to the list of available commands. Use the `/help` command to see all available commands.
 
 ![bbq10](assets/bbq10.png)<br />
 Incoming command from the BQ10 keyboard – for the moment blind: you have to look at the Serial monitor, or trust your Blackberry typing skills! :-)
@@ -70,6 +70,7 @@ myCommand cmds[] = {
 * `/i2c`: runs an I2C scan to see what's on the bus. Displays on the Serial monitor and OLED if available.
 * `/whomai`: gets the BLE broadcast name. Useful when you have a few devices. You enter this command on Serial, and get the right name.
 * `/s1`: `/s1` or `/s1?` displays the current Seria1l status, whereas `/s1 0..1` sets it, `0` = off, `1` = on.
+* `/oled`: `/oled` or `/oled?` gets OLED on/off status, whereas `/oled 1` or `oled on` turns it on, and `/oled 0` or `oled off` turns it off.
 
 ### Environment
 * `/th`: sends the temperature and humidity if you have either a [RAK1901](https://store.rakwireless.com/products/rak1901-shtc3-temperature-humidity-sensor), an [HTU21D](https://www.mikroe.com/htu21d-click), or similar, or a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor), or similar bme680 sensor, connected.

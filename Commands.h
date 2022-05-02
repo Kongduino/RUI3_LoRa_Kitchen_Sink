@@ -33,6 +33,7 @@ void handleOCP(char *);
 void handlePongBack(char *);
 void handleSerial1(char *);
 void handleSendMsg(char *);
+void handleOLED(char *);
 
 bool needAES = false, needJSON = false, pongBack = false, autoPing = true;
 uint32_t apPeriod = 30000, lastPing;
@@ -73,13 +74,47 @@ myCommand cmds[] = {
   {handlePongBack, "pb", "Gets/sets pong back."},
   {handleSerial1, "s1", "Enables/disables Serial1."},
   {handleSendMsg, "send", "Sends a custom P2P packet."},
+  {handleOLED, "oled", "Gets/sets OLED on/off status."},
 };
+
+void handleOLED(char *param) {
+  if (hasOLED) {
+    uint8_t i = sscanf(param, "/oled off");
+    if (i > -1) {
+      switchOLED(false);
+      return;
+    }
+    i = sscanf(param, "/oled on");
+    if (i > -1) {
+      switchOLED(true);
+      oledLastOn = millis();
+      return;
+    }
+    uint8_t value;
+    i = sscanf(param, "/oled %d", &value);
+    if (i > -1) {
+      if (i == 0) switchOLED(false);
+      else if (i == 0) {
+        switchOLED(true);
+        oledLastOn = millis();
+      }
+      return;
+    }
+    sprintf(msg, "OLED: %s\n", oledON ? "on" : "off");
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+  }
+}
 
 void handleSendMsg(char *param) {
   memset(msg, 0, 128);
   uint8_t i = sscanf(param, "/send %s", msg);
   if (i > -1) {
     sendMsg(msg);
+  } else {
+    Serial.println("No OLED...");
   }
 }
 
