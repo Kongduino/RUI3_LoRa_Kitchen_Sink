@@ -32,6 +32,7 @@ void handleAES(char *);
 void handleOCP(char *);
 void handlePongBack(char *);
 void handleSerial1(char *);
+void handleSendMsg(char *);
 
 bool needAES = false, needJSON = false, pongBack = false, autoPing = true;
 uint32_t apPeriod = 30000, lastPing;
@@ -71,7 +72,16 @@ myCommand cmds[] = {
   {handleAutoPing, "ap", "autoping 0/x seconds."},
   {handlePongBack, "pb", "Gets/sets pong back."},
   {handleSerial1, "s1", "Enables/disables Serial1."},
+  {handleSendMsg, "send", "Sends a custom P2P packet."},
 };
+
+void handleSendMsg(char *param) {
+  memset(msg, 0, 128);
+  uint8_t i = sscanf(param, "/send %s", msg);
+  if (i > -1) {
+    sendMsg(msg);
+  }
+}
 
 void handleOCP(char *param) {
   uint16_t value;

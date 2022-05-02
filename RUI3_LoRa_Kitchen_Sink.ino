@@ -23,7 +23,7 @@
 #include <BBQ10Keyboard.h> // http://librarymanager/All#BBQ10Keyboard
 #include <HTU21D.h> // http://librarymanager/All#HTU21D Library by Daniel Wiese
 #include <CayenneLPP.h> // http://librarymanager/All#CayenneLPP
-#include <DS3231M.h> // // http://librarymanager/All#DS3231M
+#include <DS3231M.h> // http://librarymanager/All#DS3231M
 #include <Melopero_RV3028.h> // http://librarymanager/All#Melopero_RV3028
 #include <BH1750.h> // https://github.com/claws/BH1750 or http://librarymanager/All#BH1750 by CLaws
 
