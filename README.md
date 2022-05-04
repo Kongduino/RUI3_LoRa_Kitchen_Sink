@@ -75,7 +75,7 @@ myCommand cmds[] = {
 ### Environment
 * `/th`: sends the temperature and humidity if you have either a [RAK1901](https://store.rakwireless.com/products/rak1901-shtc3-temperature-humidity-sensor), an [HTU21D](https://www.mikroe.com/htu21d-click), or similar, or a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor), or similar bme680 sensor, connected.
 * `/pa`: sends the air pressure if you have a [RAK1902](https://store.rakwireless.com/products/rak1902-kps22hb-barometric-pressure-sensor) connected.
-* `/bme`: sends the temperature, humidity and air pressure if you have a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor) connected. HPa data seems off by quite a bit, at least on my rak1906...
+* `/bme`: sends the temperature, humidity and air pressure if you have a [RAK1906](https://store.rakwireless.com/products/rak1906-bme680-environment-sensor) or a BME280 module connected. Since these 2 modules often have the same `0x76` i2c address, the startup code checks the ID number (`0x60` for bme280, `0x61` for bme680) and adjusts the variables according to the result.
 * `/msl xyzt`: sets the MSL to a new value. Useful for the next command.
 * `/alt`: calculates the altitude from the current pressure and MSL. If both 1902 and 1906 are present, it will do it twice.
 * `/lux`: sends the Ambient Light level if you have a [RAK1903](https://store.rakwireless.com/products/rak1903-opt3001dnpr-ambient-light-sensor) (or a similar OPT3001 sensor), or a BH1750 (using [this library](https://github.com/claws/BH1750)) connected.

@@ -1,6 +1,7 @@
 #include "rak1901.h"
 #include "rak1902.h"
 #include "rak1903.h"
+#include "Seeed_BME280.h" // http://librarymanager/All#Seeed_BME280
 // #include "unishox2.h"
 #include <ClosedCube_BME680.h> // http://librarymanager/All#ClosedCube_BME680
 #include <ss_oled.h> // http://librarymanager/All#ss_oled By Larry Bank
@@ -53,6 +54,7 @@ rak1901 th_sensor;
 rak1902 p_sensor;
 rak1903 rak1903_lux;
 ClosedCube_BME680 bme680;
+BME280 bme280;
 
 int rc;
 SSOLED oled;
@@ -73,7 +75,7 @@ bool hasOLED = true; // Doesn't mean you have an OLED – Check and verify!
 // It means that IF an OLED is detected, it will be used.
 // OTOH if you set it to false, even if it is detected, it won't be used.
 bool hasTH = false, hasPA = false, has1903 = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false;
-bool hasRAK12002 = false, hasBH1750 = false, hasBBQ10 = false, oledON;
+bool hasRAK12002 = false, hasBH1750 = false, hasBBQ10 = false, oledON, hasBME280 = false;;
 bool needSerial1 = true; // Set to false if you want to disable Serial1
 float temp, humid, HPa, Lux, MSL = 1013.5;
 long startTime;
@@ -108,31 +110,61 @@ char msg[128]; // general-use buffer
 */
 void recv_cb(rui_lora_p2p_recv_t data) {
   // RX callback
-  api.lorawan.precv(0);
+  // api.lorawan.precv(0);
   uint16_t ln = data.BufferSize;
   if (ln == 0) {
     // This should not happen. But, you know...
     // will not != should not
-    // Serial.println("Empty buffer.");
-    Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+    Serial.println("Empty buffer.");
+    // Serial.printf("Reset infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
     return;
   }
   sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", ln, data.Rssi, data.Snr);
   Serial.print(msg);
-  hexDump(data.Buffer, ln);
-  sprintf(msg, "{\"RSSI\":%d,\"SNR\":%d,\"msg\":\"%s\"}\n", data.Rssi, data.Snr, data.Buffer);
-  if (needSerial1) Serial1.print(msg);
 #ifdef __RAKBLE_H__
-  Serial.println("Sending to BLE");
+  // Serial.println("Sending to BLE");
   // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
   sprintf(msg, "[%d] RSSI %d SNR %d\n", ln, data.Rssi, data.Snr);
   sendToBle(msg);
-  sprintf(msg, "%s\n", (char*)data.Buffer);
-  sendToBle(msg);
 #endif
-  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  hexDump(data.Buffer, ln);
+  bool isLPP = (data.Buffer[0] == 'l' && data.Buffer[1] == 'p' && data.Buffer[2] == 'p');
+  if (isLPP) {
+    DynamicJsonDocument jsonBuffer(256);
+    JsonArray root = jsonBuffer.to<JsonArray>();
+    ln -= 3;
+    uint8_t buffer[ln], count;
+    memcpy(buffer, data.Buffer + 3, ln);
+    count = lpp.decode(buffer, ln, root);
+    serializeJsonPretty(root, msg, measureJsonPretty(root));
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    // Serial.println("Sending to BLE");
+    // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
+    sprintf(msg, "[%d] RSSI %d SNR %d\n", ln, data.Rssi, data.Snr);
+    sendToBle(msg);
+    sprintf(msg, "%s\n", (char*)data.Buffer);
+    sendToBle(msg);
+#endif
+  } else {
+    sprintf(msg, "{\"RSSI\":%d,\"SNR\":%d,\"msg\":\"%s\"}\n", data.Rssi, data.Snr, data.Buffer);
+    if (needSerial1) Serial1.print(msg);
+#ifdef __RAKBLE_H__
+    // Serial.println("Sending to BLE");
+    // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
+    sprintf(msg, "%s\n", (char*)data.Buffer);
+    sendToBle(msg);
+#endif
+  }
+  // Serial.printf("Reset infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   if (pongBack) {
-    delay(1000);
+    Serial.println("delay before pongback...");
+    uint8_t x = 3;
+    while (x > 0) {
+      Serial.printf("%d, ", x--);
+      delay(500);
+    } // Just for show
+    Serial.println("0!");
     sprintf(msg, "rcvd at %d %d", data.Rssi, data.Snr);
     // Serial.println(msg);
     sendMsg(msg);
@@ -141,7 +173,8 @@ void recv_cb(rui_lora_p2p_recv_t data) {
 
 void send_cb(void) {
   // TX callback
-  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  Serial.println("Tx done!");
+  Serial.printf("reset Rx mode[65534] %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   // set the LoRa module to indefinite listening mode:
   // no timeout + no limit to the number of packets
   // NB: 65535 = wait for ONE packet, no timeout
@@ -152,7 +185,8 @@ void sendLPP(char * param) {
   uint8_t channel = 1;
   if (hasDS3231M) {
     if (hasOLED) displayScroll(" * ds3231m");
-    lpp.addUnixTime(channel++, DS3231M.unixtime());
+    DateTime now = DS3231M.now();
+    lpp.addUnixTime(channel++, now.unixtime());
   } else if (hasRAK12002) {
     if (hasOLED) displayScroll(" * rak12002");
     lpp.addUnixTime(channel++, rak12002.getUnixTime());
@@ -177,6 +211,14 @@ void sendLPP(char * param) {
     temp = bme680.readTemperature();
     HPa = bme680.readPressure();
     humid = bme680.readHumidity();
+    lpp.addTemperature(channel++, temp);
+    lpp.addRelativeHumidity(channel++, humid);
+    lpp.addBarometricPressure(channel++, HPa);
+  } else if (hasBME280) {
+    if (hasOLED) displayScroll(" * bme280");
+    temp = bme280.getTemperature();
+    HPa = bme280.getPressure()/100.0;
+    humid = bme280.getHumidity();
     lpp.addTemperature(channel++, temp);
     lpp.addRelativeHumidity(channel++, humid);
     lpp.addBarometricPressure(channel++, HPa);
@@ -208,13 +250,13 @@ void sendLPP(char * param) {
   }
   api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
-  uint8_t lBuff[54];
+  uint8_t lBuff[ln + 3];
   memcpy(lBuff + 3, lpp.getBuffer(), ln);
   lBuff[0] = 'l';
   lBuff[1] = 'p';
   lBuff[2] = 'p';
   bool rslt = api.lorawan.psend(ln + 3, lBuff);
-  sprintf(msg, "Sending LPP payload: %s\n", rslt ? "Success" : "Fail");
+  sprintf(msg, "Sending LPP payload [%d]: %s\n", (ln + 3), rslt ? "Success" : "Fail");
   Serial.print(msg);
   hexDump(lBuff, ln + 3);
 #ifdef __RAKBLE_H__
@@ -286,6 +328,27 @@ void sendLux() {
   }
 }
 
+void sendBME280(bool showPA = true) {
+  temp = bme280.getTemperature();
+  HPa = bme280.getPressure()/100.0;
+  humid = bme280.getHumidity();
+  if (showPA) sprintf(msg, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
+  else sprintf(msg, "%.2f C %.2f%%", temp, humid);
+  if (hasOLED && showPA) {
+    // if we show all 3 data points: do it on two lines
+    hasOLED = false;
+    // we will display on 2 lines, separately
+    sendMsg(msg);
+    sprintf(msg, "%.2fC %.2f%%", temp, humid);
+    displayScroll(msg);
+    sprintf(msg, "%.2f HPa", HPa);
+    displayScroll(msg);
+    hasOLED = true;
+  } else {
+    sendMsg(msg);
+  }
+}
+
 void sendBME680(bool showPA = true) {
   ClosedCube_BME680_Status status = bme680.readStatus();
   //  if (status.newDataFlag) {
@@ -326,17 +389,6 @@ void sendMsg(char* msgToSend) {
     displayScroll("Sending P2P:");
     displayScroll(msgToSend);
   }
-  /*
-    // Results are not good...
-    char test0[64], test1[64];
-    Serial.println("Unishox2 compression:");
-    int cLen = unishox2_compress(msg, ln, test0, USX_PSET_FAVOR_ALPHA);
-    Serial.printf("Compressed: %d vs %d\n", ln, cLen);
-    hexDump((uint8_t*)test0, cLen);
-    int dLen = unishox2_decompress(test0, cLen, test1, USX_PSET_FAVOR_ALPHA);
-    Serial.printf("Decompressed: %d vs %d\n", cLen, dLen);
-    hexDump((uint8_t*)test1, dLen);
-  */
 }
 
 float calcAlt(float pressure) {
@@ -544,21 +596,34 @@ void setup() {
 
   // Test for rak1906
   error = myBus[0x76];
+  hasBME280 = false;
   if (error != 0) {
-    Serial.println("RAK1906 Light Sensor present!");
-    if (hasOLED) displayScroll("* rak1906");
+    Serial.println("BME device present!");
     bme680.init(0x76); // I2C address: 0x76 or 0x77
     bme680.reset();
     Serial.print("Chip ID=0x");
     uint8_t id = bme680.getChipID();
     Serial.println(id, HEX);
-    hasBME680 = (id != 0xFF);
+    hasBME680 = (id == 0x61);
     if (hasBME680) {
       Serial.println("RAK1906 init success!");
+      if (hasOLED) displayScroll("* rak1906");
       bme680.setOversampling(BME680_OVERSAMPLING_X1, BME680_OVERSAMPLING_X2, BME680_OVERSAMPLING_X16);
       bme680.setIIRFilter(BME680_FILTER_3);
       bme680.setForcedMode();
-    } else Serial.println("RAK1906 init fail!");
+    } else if (id == 0x60) {
+      hasBME280 = bme280.init();
+      if (!hasBME280) {
+        Serial.println("* bme280 startup error!");
+        if (hasOLED) displayScroll("* bme280 error!");
+      } else {
+        Serial.println("* bme280");
+        if (hasOLED) displayScroll("* bme280");
+      }
+    } else {
+      Serial.println("BMEx80 init fail!");
+      if (hasOLED) displayScroll("BMEx80 init fail!");
+    }
   }
 
   // Test for HTU21D

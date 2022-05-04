@@ -5,6 +5,7 @@ void i2cScan(char*);
 void displayTime();
 void sendLux();
 void sendBME680(bool);
+void sendBME280(bool);
 void sendPA();
 void sendHTU21D();
 void sendTH();
@@ -192,7 +193,7 @@ void handleSerial1(char *param) {
 
 void handleAutoPing(char *param) {
   uint8_t value;
-  int i = sscanf(param, "/ap %d", &value);
+  uint8_t i = sscanf(param, "/ap %d", &value);
   if (i == 1) {
     // 0 OFF or xx ON
     sprintf(msg, "ap %s [%d]", (value == 0) ? "off" : "on", value);
@@ -205,6 +206,17 @@ void handleAutoPing(char *param) {
     apPeriod = 1000 * value;
     lastPing = millis();
   } else {
+    i = sscanf(param, "/ap off");
+    if (i > -1) {
+      sprintf(msg, "Set ap off");
+      Serial.println(msg);
+#ifdef __RAKBLE_H__
+      sendToBle(msg);
+#endif
+      if (hasOLED) displayScroll(msg);
+      autoPing = false;
+      return;
+    }
     sprintf(msg, "ap %s [%d]", autoPing ? "on" : "off", (apPeriod / 1000));
     Serial.println(msg);
 #ifdef __RAKBLE_H__
@@ -554,6 +566,9 @@ void handleTH(char *param) {
   if (hasBME680) {
     sendBME680(false);
     hasSomething = true;
+  } else if (hasBME280) {
+    sendBME280(false);
+    hasSomething = true;
   }
   if (!hasSomething) {
     sprintf(msg, "No Temp/Humidity module installed!");
@@ -571,7 +586,8 @@ void handlePA(char *param) {
 
 void handleBME(char *param) {
   if (hasBME680) sendBME680(true);
-  else Serial.println("No RAK1906 module installed!");
+  else if (hasBME280) sendBME280(true);
+  else Serial.println("No BMEx80 module installed!");
 }
 
 void handleALT(char *param) {
@@ -588,6 +604,14 @@ void handleALT(char *param) {
   if (hasBME680) {
     ClosedCube_BME680_Status status = bme680.readStatus();
     float alt = calcAlt(bme680.readPressure());
+    sprintf(msg, "bme: %.2f m", alt);
+    Serial.println(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    if (hasOLED) displayScroll(msg);
+  } else if (hasBME280) {
+    float alt = calcAlt(bme280.getPressure() / 100.0);
     sprintf(msg, "bme: %.2f m", alt);
     Serial.println(msg);
 #ifdef __RAKBLE_H__
