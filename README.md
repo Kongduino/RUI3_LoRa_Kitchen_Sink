@@ -88,6 +88,8 @@ myCommand cmds[] = {
 * `/send xxxxx`: Sends a custom message.
 * `/lpp`: Send all available data points as a Cayenne LPP packet. If you have an RTC connected, the first channel wil be UNIX time.
 
+![LPP](assets/LPP.png)
+
 (* `/> xxxxx`: sends a custom message. Notice the space between `/>` and `xxxxxx`.) <-- to be reimplemented
 
 * `/p2p`: displays the main P2P settings.
