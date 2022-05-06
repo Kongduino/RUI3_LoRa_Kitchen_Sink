@@ -87,7 +87,9 @@ myCommand cmds[] = {
 * `/ping`: self-explanatory I believe...
 * `/send xxxxx`: Sends a custom message.
 * `/lpp`: Send all available data points as a Cayenne LPP packet. If you have an RTC connected, the first channel wil be UNIX time.
+
 (* `/> xxxxx`: sends a custom message. Notice the space between `/>` and `xxxxxx`.) <-- to be reimplemented
+
 * `/p2p`: displays the main P2P settings.
 * `/sf`: `/sf` or `/sf?` displays the current spreading factor used, whereas `/sf 5..12` sets it.
 * `/bw`: `/bw` or `/bw?` displays the current bandwidth used, in KHz, whereas `/bw 0..9` sets it.
