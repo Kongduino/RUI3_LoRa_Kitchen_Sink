@@ -77,7 +77,7 @@ bool hasOLED = true; // Doesn't mean you have an OLED – Check and verify!
 bool hasTH = false, hasPA = false, has1903 = false, hasBME680 = false, hasHTU21D = false, hasDS3231M = false;
 bool hasRAK12002 = false, hasBH1750 = false, hasBBQ10 = false, oledON, hasBME280 = false;;
 bool needSerial1 = true; // Set to false if you want to disable Serial1
-float temp, humid, HPa, Lux, MSL = 1013.5;
+float temp, humid, HPa, Lux, MSL = 1013.5, alt;
 long startTime;
 // LoRa SETUP
 // The LoRa chip come pre-wired: all you need to do is define the parameters:
@@ -110,13 +110,14 @@ char msg[128]; // general-use buffer
 */
 void recv_cb(rui_lora_p2p_recv_t data) {
   // RX callback
-  // api.lorawan.precv(0);
+  api.lorawan.precv(0); // We're busy lah, do not disturb! :-)
   uint16_t ln = data.BufferSize;
+  hexDump(data.Buffer, ln);
   if (ln == 0) {
     // This should not happen. But, you know...
     // will not != should not
     Serial.println("Empty buffer.");
-    // Serial.printf("Reset infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+    Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
     return;
   }
   sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", ln, data.Rssi, data.Snr);
@@ -124,20 +125,21 @@ void recv_cb(rui_lora_p2p_recv_t data) {
 #ifdef __RAKBLE_H__
   // Serial.println("Sending to BLE");
   // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
-  sprintf(msg, "[%d] RSSI %d SNR %d\n", ln, data.Rssi, data.Snr);
+  sprintf(msg, "Length: %d, RSSI %d, SNR %d\n", ln, data.Rssi, data.Snr);
   sendToBle(msg);
 #endif
-  hexDump(data.Buffer, ln);
   bool isLPP = (data.Buffer[0] == 'l' && data.Buffer[1] == 'p' && data.Buffer[2] == 'p');
   if (isLPP) {
-    DynamicJsonDocument jsonBuffer(256);
-    JsonArray root = jsonBuffer.to<JsonArray>();
-    ln -= 3;
-    uint8_t buffer[ln], count;
-    memcpy(buffer, data.Buffer + 3, ln);
-    count = lpp.decode(buffer, ln, root);
-    serializeJsonPretty(root, msg, measureJsonPretty(root));
-    Serial.println(msg);
+    //    // DynamicJsonDocument jsonBuffer(512);
+    //    StaticJsonDocument<1024> jsonBuffer;
+    //    JsonArray root = jsonBuffer.to<JsonArray>();
+    //    ln -= 3;
+    //    uint8_t buffer[ln], count;
+    //    memcpy(buffer, data.Buffer + 3, ln);
+    //    count = lpp.decode(buffer, ln, root);
+    decodeLPP((char*)(data.Buffer + 3), ln - 3);
+    //    serializeJsonPretty(root, msg, measureJsonPretty(root));
+    //    Serial.println(msg);
 #ifdef __RAKBLE_H__
     // Serial.println("Sending to BLE");
     // Adafruit's Bluefruit connect is being difficult, and seems to require \n to fully receive a message..
@@ -156,9 +158,9 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     sendToBle(msg);
 #endif
   }
-  // Serial.printf("Reset infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   if (pongBack) {
-    Serial.println("delay before pongback...");
+    Serial.print("We need to pong back: delay before pongback...\n  ");
     uint8_t x = 3;
     while (x > 0) {
       Serial.printf("%d, ", x--);
@@ -166,7 +168,6 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     } // Just for show
     Serial.println("0!");
     sprintf(msg, "rcvd at %d %d", data.Rssi, data.Snr);
-    // Serial.println(msg);
     sendMsg(msg);
   }
 }
@@ -180,16 +181,40 @@ void send_cb(void) {
   // NB: 65535 = wait for ONE packet, no timeout
 }
 
+void sendMsg(char* msgToSend) {
+  uint8_t ln = strlen(msgToSend);
+  api.lorawan.precv(0);
+  // turn off reception – a little hackish, but without that send might fail.
+  // memset(msg, 0, ln + 20);
+  Serial.printf("Sending `%s`: ", msgToSend);
+  bool rslt = api.lorawan.psend(ln, (uint8_t*)msgToSend);
+  // when done it will call void send_cb(void);
+  Serial.printf("%s\n", rslt ? "Success" : "Fail");
+#ifdef __RAKBLE_H__
+  sprintf(msg, "Sending `%s` via P2P: %s\n", msgToSend, rslt ? "Success" : "Fail");
+  sendToBle(msg);
+#endif
+  if (hasOLED) {
+    sprintf(msg, "Sent %s via P2P:", rslt ? "[o]" : "[x]");
+    displayScroll(msg);
+    displayScroll(msgToSend);
+  }
+}
+
 void sendLPP(char * param) {
   lpp.reset();
   uint8_t channel = 1;
   if (hasDS3231M) {
     if (hasOLED) displayScroll(" * ds3231m");
     DateTime now = DS3231M.now();
-    lpp.addUnixTime(channel++, now.unixtime());
+    uint32_t ut = now.unixtime();
+    lpp.addUnixTime(channel++, ut);
+    Serial.printf("Adding Unix Time %d\n", ut);
   } else if (hasRAK12002) {
     if (hasOLED) displayScroll(" * rak12002");
-    lpp.addUnixTime(channel++, rak12002.getUnixTime());
+    uint32_t ut = rak12002.getUnixTime();
+    lpp.addUnixTime(channel++, ut);
+    Serial.printf("Adding Unix Time %d\n", ut);
   }
   if (hasTH) {
     if (hasOLED) displayScroll(" * rak1901");
@@ -197,12 +222,15 @@ void sendLPP(char * param) {
     temp = th_sensor.temperature();
     humid = th_sensor.humidity();
     lpp.addTemperature(channel++, temp);
+    Serial.printf("Adding Temperature %.2f\n", temp);
     lpp.addRelativeHumidity(channel++, humid);
+    Serial.printf("Adding Humidity %.2f\n", humid);
   }
   if (hasPA) {
     if (hasOLED) displayScroll(" * rak1902");
     HPa = p_sensor.pressure(MILLIBAR);
     lpp.addBarometricPressure(channel++, HPa);
+    Serial.printf("Adding HPa %.2f\n", HPa);
   }
   if (hasBME680) {
     if (hasOLED) displayScroll(" * rak1906");
@@ -211,17 +239,22 @@ void sendLPP(char * param) {
     temp = bme680.readTemperature();
     HPa = bme680.readPressure();
     humid = bme680.readHumidity();
-    lpp.addTemperature(channel++, temp);
-    lpp.addRelativeHumidity(channel++, humid);
-    lpp.addBarometricPressure(channel++, HPa);
   } else if (hasBME280) {
     if (hasOLED) displayScroll(" * bme280");
     temp = bme280.getTemperature();
-    HPa = bme280.getPressure()/100.0;
+    HPa = bme280.getPressure() / 100.0;
     humid = bme280.getHumidity();
+  }
+  if (hasBME680 || hasBME280) {
     lpp.addTemperature(channel++, temp);
+    Serial.printf("Adding Temperature %.2f\n", temp);
     lpp.addRelativeHumidity(channel++, humid);
+    Serial.printf("Adding Humidity %.2f\n", humid);
     lpp.addBarometricPressure(channel++, HPa);
+    Serial.printf("Adding HPa %.2f\n", HPa);
+    alt = calcAlt(HPa);
+    lpp.addAltitude(channel++, alt);
+    Serial.printf("Adding Altitude %.2f\n", alt);
   }
   if (hasHTU21D) {
     if (hasOLED) displayScroll(" * HTU21D");
@@ -229,12 +262,16 @@ void sendLPP(char * param) {
     temp = myHTU21D.getTemperature();
     humid = myHTU21D.getHumidity();
     lpp.addTemperature(channel++, temp);
+    Serial.printf("Adding Temperature %.2f\n", temp);
     lpp.addRelativeHumidity(channel++, humid);
+    Serial.printf("Adding Humidity %.2f\n", humid);
   }
   if (has1903) {
     if (hasOLED) displayScroll(" * rak1903");
     rak1903_lux.update();
-    lpp.addLuminosity(channel++, rak1903_lux.lux());
+    Lux = rak1903_lux.lux();
+    lpp.addLuminosity(channel++, Lux);
+    Serial.printf("Adding Luminosity %.2f\n", Lux);
   }
   uint8_t ln = lpp.getSize();
   if (ln == 0) {
@@ -330,7 +367,7 @@ void sendLux() {
 
 void sendBME280(bool showPA = true) {
   temp = bme280.getTemperature();
-  HPa = bme280.getPressure()/100.0;
+  HPa = bme280.getPressure() / 100.0;
   humid = bme280.getHumidity();
   if (showPA) sprintf(msg, "%.2f C %.2f%% %.2f HPa", temp, humid, HPa);
   else sprintf(msg, "%.2f C %.2f%%", temp, humid);
@@ -374,23 +411,6 @@ void sendBME680(bool showPA = true) {
   //  } else Serial.println("BME data not ready.");
 }
 
-void sendMsg(char* msgToSend) {
-  uint8_t ln = strlen(msgToSend);
-  api.lorawan.precv(0);
-  // turn off reception – a little hackish, but without that send might fail.
-  // memset(msg, 0, ln + 20);
-  char buff[128];
-  sprintf(buff, "Sending `%s`: %s\n", msgToSend, api.lorawan.psend(ln, (uint8_t*)msgToSend) ? "Success" : "Fail");
-  Serial.print(buff);
-#ifdef __RAKBLE_H__
-  sendToBle(buff);
-#endif
-  if (hasOLED) {
-    displayScroll("Sending P2P:");
-    displayScroll(msgToSend);
-  }
-}
-
 float calcAlt(float pressure) {
   float A = pressure / MSL;
   float B = 1 / 5.25588;
@@ -402,13 +422,19 @@ float calcAlt(float pressure) {
 
 void displayTime() {
   if (hasRAK12002) {
-    sprintf(msg, "rak12002 date: %04d/%02d/%02d", rak12002.getYear(), rak12002.getMonth(), rak12002.getDate());
-    Serial.println(msg);
+    sprintf(msg, "rak12002 date: %04d/%02d/%02d\n", rak12002.getYear(), rak12002.getMonth(), rak12002.getDate());
+    Serial.print(msg);
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    sprintf(msg, "rak12002 time: %02d:%02d:%02d", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
-    Serial.println(msg);
+    sprintf(msg, "rak12002 time: %02d:%02d:%02d\n", rak12002.getHour(), rak12002.getMinute(), rak12002.getSecond());
+    Serial.print(msg);
+#ifdef __RAKBLE_H__
+    sendToBle(msg);
+#endif
+    uint32_t ut = rak12002.getUnixTime();
+    sprintf(msg, "Unix Time: %d = 0x%x\n", ut, ut);
+    Serial.print(msg);
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
@@ -423,10 +449,11 @@ void displayTime() {
 
   if (hasDS3231M) {
     DateTime now = DS3231M.now(); // get the current time from device
+    uint32_t ut = now.unixtime();
     // Output if seconds have changed
     // Use sprintf() to pretty print the date/time with leading zeros
-    sprintf(msg, "%04d/%02d/%02d %02d:%02d:%02d", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
-    Serial.println(msg);
+    sprintf(msg, "%04d/%02d/%02d %02d:%02d:%02d. Unix Time: %d = 0x%x\n", now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+    Serial.print(msg);
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
@@ -456,7 +483,7 @@ void setup() {
   }
   uint8_t x = 5;
   while (x > 0) {
-    Serial.printf("%d, ", x--);
+    Serial.printf(" % d, ", x--);
     delay(500);
   } // Just for show
   Serial.println("0!");
@@ -464,7 +491,10 @@ void setup() {
   Serial.println("------------------------------------------------------");
   if (needSerial1) Serial1.println("Kitchen Sink");
   cmdCount = sizeof(cmds) / sizeof(myCommand);
-  handleHelp("/help");
+  codeCount = sizeof(lppCodes) / sizeof(myCodes);
+  Serial.printf("codeCount = % d\n", codeCount);
+  for (uint8_t i = 0; i < codeCount; i++) Serial.printf(" . % s: % d\n", lppCodes[i].name, lppCodes[i].code);
+  handleHelp(" / help");
   Wire.begin();
   Wire.setClock(100000);
   i2cScan("");
@@ -695,10 +725,17 @@ void setup() {
 #endif
   // This version doesn't have an automatic Tx functionality:
   // YOU are in charge of sending, either via Serial or BLE.
-  Serial.printf("Set infinite Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  Serial.printf("SetRx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
   startTime = millis();
   if (hasOLED) oledLastOn = millis();
   if (autoPing) lastPing = millis();
+  char myLPP[] = {
+    0x01, 0x85, 0x62, 0x72, 0x9e, 0x2d, 0x02, 0x67, 0x00, 0xef,
+    0x03, 0x68, 0x6e, 0x04, 0x73, 0x26, 0xed, 0x05, 0x67, 0x00,
+    0xf5, 0x06, 0x68, 0x74, 0x07, 0x73, 0x26, 0xdf, 0x08, 0x65,
+    0x00, 0x05
+  };
+  decodeLPP(myLPP, 32);
 }
 
 void loop() {

@@ -150,3 +150,82 @@ void restoreScreen() {
   }
   isBBQing = false;
 }
+
+struct myCodes {
+  uint8_t code;
+  uint8_t size;
+  uint16_t mult;
+  char *name;
+};
+uint8_t codeCount = 0;
+myCodes lppCodes[] = {
+  {LPP_UNIXTIME, LPP_UNIXTIME_SIZE, LPP_UNIXTIME_MULT, "UnixTime"},
+  {LPP_TEMPERATURE, LPP_TEMPERATURE_SIZE, LPP_TEMPERATURE_MULT, "Temperature"},
+  {LPP_RELATIVE_HUMIDITY, LPP_RELATIVE_HUMIDITY_SIZE, LPP_RELATIVE_HUMIDITY_MULT, "Humidity"},
+  {LPP_BAROMETRIC_PRESSURE, LPP_BAROMETRIC_PRESSURE_SIZE, LPP_BAROMETRIC_PRESSURE_MULT, "Pressure"},
+  {LPP_ALTITUDE, LPP_ALTITUDE_SIZE, LPP_ALTITUDE_MULT, "Altitude"},
+  {LPP_LUMINOSITY, LPP_LUMINOSITY_SIZE, LPP_LUMINOSITY_MULT, "Luminosity"},
+};
+
+void decodeLPP(char *buff, uint8_t len) {
+  //  hexDump((uint8_t*)buff, len);
+  uint8_t myIndex = 0;
+  while (myIndex < len) {
+    uint8_t channelIndex = buff[myIndex++];
+    uint8_t codeIndex = buff[myIndex++];
+    // Serial.printf("\nHandling Channel %d, Code %d\n", channelIndex, codeIndex);
+    int foundCode = -1;
+    for (uint8_t i = 0; i < codeCount; i++) {
+      // Serial.printf("%d: Code %d vs %d\n", i, codeIndex, lppCodes[i].code);
+      if (lppCodes[i].code == codeIndex) {
+        foundCode = i;
+        // Serial.printf("foundCode = %d at %d\n", foundCode, i);
+        i = codeCount;
+      }
+    }
+    if (foundCode == -1) {
+      Serial.printf("Code %d unknown! Aborting...\n\n", codeIndex);
+      return;
+    }
+    myCodes cd = lppCodes[foundCode];
+    if (cd.size == 1) {
+      // Serial.printf("Size 1, cd.mult = %d\n", cd.mult);
+      // hexDump((uint8_t*)(buff + myIndex - 2), 3);
+      uint8_t n = buff[myIndex++];
+      if (cd.mult == 1) Serial.printf("%s: %d\n", cd.name, n);
+      else Serial.printf("%s: %.2f\n", cd.name, (float)(n / cd.mult));
+    } else if (cd.size == 2) {
+      // Serial.printf("Size 2, cd.mult = %d\n", cd.mult);
+      // hexDump((uint8_t*)(buff + myIndex - 2), 4);
+      double nn = (buff[myIndex] << 8) | buff[myIndex + 1];
+      myIndex += 2;
+      if (cd.mult == 1) Serial.printf("%s: %d\n", cd.name, nn);
+      else {
+        float ff = nn / cd.mult;
+        Serial.printf("%s: %.2f\n", cd.name, ff);
+      }
+    } else if (cd.size == 4) {
+      // Serial.printf("Size 4, cd.mult = %d\n", cd.mult);
+      // hexDump((uint8_t*)(buff + myIndex - 2), 6);
+      uint32_t nnnn = 0;
+      for (uint8_t i = 0; i < 4; i++) nnnn = (nnnn << 8) + buff[myIndex + i];
+      myIndex += 4;
+      if (cd.mult == 1) {
+        //if (hasDS3231M) {
+        if (cd.code == LPP_UNIXTIME) {
+          DateTime now = DateTime(nnnn);
+          Serial.printf("Unix Time [%d]: %04d/%02d/%02d %02d:%02d:%02d\n", nnnn, now.year(), now.month(), now.day(), now.hour(), now.minute(), now.second());
+        }
+        //}
+        else Serial.printf(" . %s: %d\n", cd.name, nnnn);
+      } else {
+        float ff = nnnn / cd.mult;
+        Serial.printf(" * %s: %.2f\n", cd.name, ff);
+      }
+    } else {
+      Serial.printf("Unknown length: %d\n", cd.size);
+      return;
+    }
+    //Serial.printf("myIndex = %d\n", myIndex);
+  }
+}

@@ -36,6 +36,8 @@ void handleSerial1(char *);
 void handleSendMsg(char *);
 void handleOLED(char *);
 
+void decodeLPP(char *, uint8_t);
+
 bool needAES = false, needJSON = false, pongBack = false, autoPing = true;
 uint32_t apPeriod = 30000, lastPing;
 char pwd[32];
