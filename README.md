@@ -89,6 +89,7 @@ myCommand cmds[] = {
 * `/lpp`: Send all available data points as a Cayenne LPP packet. If you have an RTC connected, the first channel wil be UNIX time.
 
 ![LPP](assets/LPP.png)
+(Yes there is a problem with Unix Time, hush.)
 
 (* `/> xxxxx`: sends a custom message. Notice the space between `/>` and `xxxxxx`.) <-- to be reimplemented
 
