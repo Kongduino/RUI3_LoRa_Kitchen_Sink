@@ -35,6 +35,10 @@ void handlePongBack(char *);
 void handleSerial1(char *);
 void handleSendMsg(char *);
 void handleOLED(char *);
+void sleepCPU(char*);
+void sleepAll(char*);
+void sleepLoRa(char*);
+void handleDelay(char*);
 
 void decodeLPP(char *, uint8_t);
 
@@ -78,7 +82,50 @@ myCommand cmds[] = {
   {handleSerial1, "s1", "Enables/disables Serial1."},
   {handleSendMsg, "send", "Sends a custom P2P packet."},
   {handleOLED, "oled", "Gets/sets OLED on/off status."},
+  {sleepCPU, "cpu", "sleep/cpu"},
+  {sleepAll, "all", "sleep/all"},
+  {sleepLoRa, "lora", "sleep/lora"},
+  {handleDelay, "sDelay", "Sets the sleep time."},
+  {handleHelp, "help", "Shows this help."},
 };
+
+void sleepAll(char *param) {
+  Serial.printf("Sleep/all for %d secs\n", (sleepDelay / 1000));
+  api.system.sleep.all(sleepDelay);
+  Serial.println("back");
+  // api.system.reboot();
+}
+
+void sleepLoRa(char *param) {
+  Serial.printf("Sleep/lora for %d secs\n", (sleepDelay / 1000));
+  api.system.sleep.lora(sleepDelay);
+  Serial.println("back");
+  // api.system.reboot();
+}
+
+void sleepCPU(char *param) {
+  Serial.printf("Sleep/cpu for %d secs\n", (sleepDelay / 1000));
+  api.system.sleep.cpu(sleepDelay);
+  Serial.println("back");
+  // api.system.reboot();
+}
+
+void handleDelay(char*param) {
+  int value;
+  int i = sscanf(param, "/%*s %d", &value);
+  if (i == -1) {
+    // no parameters
+    Serial.printf("Current delay: %d s\n", (sleepDelay / 1e3));
+    return;
+  } else {
+    // sf xxxx set SF
+    if (value < 1 || value > 30) {
+      Serial.printf("Invalid value: %d\n", value);
+      return;
+    }
+    sleepDelay = value * 1000;
+  }
+}
 
 void handleOLED(char *param) {
   if (hasOLED) {
@@ -378,7 +425,7 @@ void handleFreq(char *param) {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    api.lorawan.precv(65534);
+    api.lorawan.precv(65533);
     if (hasOLED) {
       sprintf(msg, "New freq: %.3f", myFreq);
       displayScroll(msg);
@@ -420,7 +467,7 @@ void handleBW(char*param) {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    api.lorawan.precv(65534);
+    api.lorawan.precv(65533);
     if (hasOLED) {
       sprintf(msg, "New BW: %d", bw);
       displayScroll(msg);
@@ -462,7 +509,7 @@ void handleSF(char*param) {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    api.lorawan.precv(65534);
+    api.lorawan.precv(65533);
     if (hasOLED) {
       sprintf(msg, "SF set to %d", sf);
       displayScroll(msg);
@@ -504,7 +551,7 @@ void handleCR(char*param) {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    api.lorawan.precv(65534);
+    api.lorawan.precv(65533);
     if (hasOLED) {
       sprintf(msg, "CR set to 4/%d", (cr + 5));
       displayScroll(msg);
@@ -546,7 +593,7 @@ void handleTX(char*param) {
 #ifdef __RAKBLE_H__
     sendToBle(msg);
 #endif
-    api.lorawan.precv(65534);
+    api.lorawan.precv(65533);
     if (hasOLED) {
       sprintf(msg, "Tx pwr set to %d", txPower);
       displayScroll(msg);

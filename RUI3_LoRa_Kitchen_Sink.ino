@@ -85,6 +85,7 @@ long startTime;
 double myFreq = 868125000;
 uint16_t counter = 0, sf = 12, bw = 125, cr = 0, preamble = 8, txPower = 22;
 uint32_t myBWs[10] = {125, 125, 125, 125, 125, 125, 125, 125, 250, 500};
+uint32_t loopBattery, batteryDelay = 10000, sleepDelay = 10000;
 /*
   There's a bug presently in the API, whereas BW values below 7/125 KHz are not recognized.
   Temporary fix until the engineers enables all 10 values,
@@ -117,7 +118,7 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     // This should not happen. But, you know...
     // will not != should not
     Serial.println("Empty buffer.");
-    Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+    Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65533) ? "Success" : "Fail");
     return;
   }
   sprintf(msg, "Incoming message, length: %d, RSSI: %d, SNR: %d\n", ln, data.Rssi, data.Snr);
@@ -158,7 +159,7 @@ void recv_cb(rui_lora_p2p_recv_t data) {
     sendToBle(msg);
 #endif
   }
-  Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  Serial.printf("Reset Rx mode %s\n", api.lorawan.precv(65533) ? "Success" : "Fail");
   if (pongBack) {
     Serial.print("We need to pong back: delay before pongback...\n  ");
     uint8_t x = 3;
@@ -175,15 +176,19 @@ void recv_cb(rui_lora_p2p_recv_t data) {
 void send_cb(void) {
   // TX callback
   Serial.println("Tx done!");
-  Serial.printf("reset Rx mode[65534] %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  // Serial.printf("reset Rx mode[65533] %s\n", api.lorawan.precv(65533) ? "Success" : "Fail");
   // set the LoRa module to indefinite listening mode:
   // no timeout + no limit to the number of packets
   // NB: 65535 = wait for ONE packet, no timeout
+  // - If api.lorawan.precv(65534) is called, the device will be set as RX mode until api.lorawan.precv(0) is called.
+  // If api.lorawan.precv(65533) is called, the device will be set as RX mode, but still can do TX without calling api.lorawan.precv(0).
 }
 
 void sendMsg(char* msgToSend) {
   uint8_t ln = strlen(msgToSend);
-  api.lorawan.precv(0);
+  // NO NEED
+  // With api.lorawan.precv(65533), you can still can do TX without calling api.lorawan.precv(0).
+  // api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
   // memset(msg, 0, ln + 20);
   Serial.printf("Sending `%s`: ", msgToSend);
@@ -285,7 +290,7 @@ void sendLPP(char * param) {
     }
     return;
   }
-  api.lorawan.precv(0);
+  // api.lorawan.precv(0);
   // turn off reception – a little hackish, but without that send might fail.
   uint8_t lBuff[ln + 3];
   memcpy(lBuff + 3, lpp.getBuffer(), ln);
@@ -725,7 +730,7 @@ void setup() {
 #endif
   // This version doesn't have an automatic Tx functionality:
   // YOU are in charge of sending, either via Serial or BLE.
-  Serial.printf("SetRx mode %s\n", api.lorawan.precv(65534) ? "Success" : "Fail");
+  // Serial.printf("SetRx mode %s\n", api.lorawan.precv(65533) ? "Success" : "Fail");
   startTime = millis();
   if (hasOLED) oledLastOn = millis();
   if (autoPing) lastPing = millis();
@@ -739,6 +744,10 @@ void setup() {
 }
 
 void loop() {
+  if (millis() - loopBattery > batteryDelay) {
+    Serial.printf("Battery level: %.3f\n", api.system.bat.get());
+    loopBattery = millis();
+  }
   if (hasBBQ10) {
     // If you don't have an OLED it's gonna be fun...
     // Watch the Serial Monitor!
